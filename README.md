@@ -18,7 +18,9 @@ precio se cambian en Ajustes.
   viajes y "ganancias por km" (de ahí se deducen los km con pasajero y los km en vacío).
 - **Cargas de nafta.** Importe + precio del litro → litros. Saldo estimado del tanque, km que rinde,
   cuánto recuperaste de cada carga y consumo observado a lo largo del tiempo.
-- **Historial** por día, semana y mes, con neto por km y por hora. Exportación a CSV.
+- **Historial** por día, semana y mes, con neto por km y por hora. Exportación a CSV: un resumen
+  por día en tabla, y los turnos y las cargas en bloques verticales "Campo;Valor", fáciles de leer
+  en el celular y en Excel o Sheets en español.
 - Todo se guarda en el teléfono. Sin cuenta ni servidor.
 
 ## Instalar

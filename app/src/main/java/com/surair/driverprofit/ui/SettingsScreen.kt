@@ -119,7 +119,7 @@ fun SettingsScreen(data: AppData, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        OutlinedButton(onClick = { CsvExport.share(context, data) }, modifier = Modifier.fillMaxWidth()) { Text("Exportar turnos y cargas (CSV)") }
+        OutlinedButton(onClick = { CsvExport.share(context, data) }, modifier = Modifier.fillMaxWidth()) { Text("Exportar CSV (resumen por día, turnos y cargas)") }
 
         Spacer(Modifier.height(8.dp))
         Text(

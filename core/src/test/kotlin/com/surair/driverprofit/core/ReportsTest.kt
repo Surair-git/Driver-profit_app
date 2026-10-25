@@ -54,9 +54,18 @@ class ReportsTest {
     }
 
     @Test
-    fun csvHasOneRowPerShift() {
+    fun csvIsVerticalWithoutBom() {
         val shifts = listOf(shift("a", at(2026, 10, 19, 9), 50.0, 20_000.0))
         val csv = Csv.shifts(shifts, zone)
-        assertEquals(2, csv.trim().lines().size)
+        assertEquals("Campo;Valor", csv.lines().first())
+        assertEquals(true, csv.contains("Km recorridos;50,0\n"))
+        assertEquals(true, csv.contains("Bruto;20000\n"))
+        assertEquals(true, csv.contains("Costo nafta;5000\n"))
+        assertEquals(true, csv.contains("Neto;15000\n"))
+        assertEquals(true, csv.contains("Neto sobre bruto (%);75,0\n"))
+        assertEquals(true, csv.contains("Id;a\n"))
+        val daily = Csv.dailySummary(shifts, 0.0, zone)
+        assertEquals(2, daily.trim().lines().size)
+        assertEquals(true, daily.lines()[1].endsWith(";20000;5000;15000;75,0;15000"))
     }
 }

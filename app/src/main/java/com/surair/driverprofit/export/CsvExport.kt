@@ -15,10 +15,15 @@ object CsvExport {
     fun share(context: Context, data: AppData) {
         val dir = File(context.cacheDir, "exports").apply { mkdirs() }
         val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
-        val shifts = File(dir, "turnos-$stamp.csv").apply { writeText("﻿" + Csv.shifts(data.shifts)) }
-        val loads = File(dir, "cargas-nafta-$stamp.csv").apply { writeText("﻿" + Csv.fuelLoads(data.fuelLoads)) }
+        // Sin BOM: algunas apps lo muestran como caracteres raros al principio del archivo.
+        val daily = File(dir, "resumen-por-dia-$stamp.csv").apply {
+            writeText(Csv.dailySummary(data.shifts, data.settings.monthlyFixedCosts))
+        }
+        val shifts = File(dir, "turnos-$stamp.csv").apply { writeText(Csv.shifts(data.shifts)) }
+        val loads = File(dir, "cargas-nafta-$stamp.csv").apply { writeText(Csv.fuelLoads(data.fuelLoads)) }
         val authority = context.packageName + ".fileprovider"
         val uris = arrayListOf<Uri>(
+            FileProvider.getUriForFile(context, authority, daily),
             FileProvider.getUriForFile(context, authority, shifts),
             FileProvider.getUriForFile(context, authority, loads),
         )
