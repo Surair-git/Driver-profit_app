@@ -34,6 +34,12 @@ precio se cambian en Ajustes.
 4. En Ajustes del teléfono, poné Driver Profit como "Sin restricciones" en optimización de batería
    para que no corte el GPS en turnos largos (hay un botón en la pestaña Ajustes de la app).
 
+## Actualizar
+
+Las compilaciones se firman con la clave fija de `app/keystore/`, así que un APK nuevo se instala
+encima del anterior y conserva los datos. Si alguna vez Android dice "conflicto con un paquete",
+es porque la app instalada tiene otra firma: hay que desinstalarla una vez e instalar la nueva.
+
 ## Desarrollo
 
 - `core/`: lógica pura en Kotlin (cálculos, filtro de GPS, reportes, CSV). Se testea con

@@ -17,10 +17,25 @@ android {
         versionName = "0.2.0"
     }
 
+    // Clave fija para que todas las compilaciones (locales y de GitHub Actions) tengan la misma
+    // firma y el APK nuevo se instale encima del anterior sin desinstalar. Es una clave autofirmada
+    // para distribuir por fuera de la tienda; si el repo pasa a ser público, mejor moverla a un secreto.
+    signingConfigs {
+        create("shared") {
+            storeFile = rootProject.file("app/keystore/driver-profit.jks")
+            storePassword = "driverprofit"
+            keyAlias = "driverprofit"
+            keyPassword = "driverprofit"
+        }
+    }
+
     buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("shared")
+        }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
 
