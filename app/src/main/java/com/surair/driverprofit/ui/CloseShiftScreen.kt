@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -143,13 +144,28 @@ fun CloseShiftScreen(shift: Shift, settings: Settings, onDone: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(), minLines = 2,
             )
 
-            InfoCard(tone = CardTone.Primary) {
-                SectionTitle("Resultado")
-                StatRow("Bruto", Fmt.money(gross))
-                StatRow("Nafta (${Fmt.km(shift.km)})", "-" + Fmt.money(cost))
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                StatRow("Neto", Fmt.money(net), emphasize = true, valueColor = netColor(net))
-                StatRow("Neto sobre bruto", pct?.let { Fmt.pct(it) } ?: "—", emphasize = true)
+            InfoCard {
+                Text("Te quedan", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(Fmt.money(net), style = MaterialTheme.typography.displayMedium, color = netColor(net), maxLines = 1)
+                Spacer(Modifier.height(10.dp))
+                SplitBar(gross = gross, fuelCost = cost)
+                Spacer(Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LegendDot(MaterialTheme.colorScheme.onSurface)
+                        Text("Bruto de DiDi", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text(Fmt.money(gross), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                }
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LegendDot(fuelColor())
+                        Text("Nafta · ${Fmt.km(shift.km)} · ${Fmt.liters(Calc.fuelLiters(shift))}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text("−" + Fmt.money(cost), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = fuelColor())
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                StatRow("Neto sobre bruto", pct?.let { Fmt.pct(it) } ?: "—", emphasize = true, valueColor = netColor(net))
                 if (shift.km > 0) {
                     StatRow("Neto por km recorrido", Fmt.money(net / shift.km))
                 }

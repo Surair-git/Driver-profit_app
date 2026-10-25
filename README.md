@@ -21,6 +21,8 @@ precio se cambian en Ajustes.
 - **Historial** por día, semana y mes, con neto por km y por hora. Exportación a CSV: un resumen
   por día en tabla, y los turnos y las cargas en bloques verticales "Campo;Valor", fáciles de leer
   en el celular y en Excel o Sheets en español.
+- **Dos temas**: tablero nocturno (oscuro, para mirar de reojo manejando) y libreta diurna (claro).
+  Se elige en Ajustes o sigue al sistema.
 - Todo se guarda en el teléfono. Sin cuenta ni servidor.
 
 ## Instalar

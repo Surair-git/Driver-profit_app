@@ -19,6 +19,8 @@ data class Settings(
     /** Punto de partida para el saldo estimado del tanque. */
     val tankBaselineLiters: Double = 0.0,
     val tankBaselineAt: Long = 0L,
+    /** "system", "dark" o "light". */
+    val themeMode: String = "system",
 )
 
 @Serializable

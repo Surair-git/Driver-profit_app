@@ -1,5 +1,6 @@
 package com.surair.driverprofit.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,16 +10,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -28,6 +32,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,34 +45,37 @@ import com.surair.driverprofit.core.Reports
 import com.surair.driverprofit.core.Shift
 import com.surair.driverprofit.core.ShiftStatus
 import com.surair.driverprofit.export.CsvExport
+import java.time.ZoneId
+import java.time.format.TextStyle
 
 @Composable
 fun HistoryScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    var tabIndex by rememberSaveable { mutableIntStateOf(0) }
+    var tabIndex by rememberSaveable { mutableIntStateOf(1) }
     val period = when (tabIndex) { 0 -> Period.DAY; 1 -> Period.WEEK; else -> Period.MONTH }
     val rows = remember(data, period) { Reports.byPeriod(data.shifts, period, data.settings.monthlyFixedCosts) }
+    val cs = MaterialTheme.colorScheme
 
     Column(modifier = modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp)) {
-            Text("Historial", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp)) {
+            Text("Historial", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             IconButton(onClick = { CsvExport.share(context, data) }) { Icon(Icons.Filled.Share, contentDescription = "Exportar CSV") }
         }
-        TabRow(selectedTabIndex = tabIndex) {
-            listOf("Diario", "Semanal", "Mensual").forEachIndexed { i, label ->
-                Tab(selected = tabIndex == i, onClick = { tabIndex = i }, text = { Text(label) })
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            listOf("Día", "Semana", "Mes").forEachIndexed { i, label ->
+                SegmentedButton(
+                    selected = tabIndex == i,
+                    onClick = { tabIndex = i },
+                    shape = SegmentedButtonDefaults.itemShape(index = i, count = 3),
+                ) { Text(label) }
             }
         }
         if (rows.isEmpty()) {
-            Text(
-                "Todavía no hay turnos terminados.",
-                modifier = Modifier.padding(16.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Text("Todavía no hay turnos terminados.", modifier = Modifier.padding(16.dp), color = cs.onSurfaceVariant)
         }
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(rows, key = { it.key.toString() }) { row ->
-                PeriodCard(row, onOpenShift)
+                PeriodCard(row, period, data, onOpenShift)
             }
             item { Spacer(Modifier.height(16.dp)) }
         }
@@ -75,60 +83,115 @@ fun HistoryScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifi
 }
 
 @Composable
-private fun PeriodCard(row: PeriodRow, onOpenShift: (String) -> Unit) {
+private fun PeriodCard(row: PeriodRow, period: Period, data: AppData, onOpenShift: (String) -> Unit) {
     val s = row.summary
+    val cs = MaterialTheme.colorScheme
+    val zone = remember { ZoneId.systemDefault() }
     InfoCard {
-        Text(row.label, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
-        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Metric("km", Fmt.dec(s.km, 0), modifier = Modifier.weight(1f))
-            Metric("bruto", Fmt.money(s.gross), modifier = Modifier.weight(1f))
-            Metric("nafta", Fmt.money(s.fuelCost), modifier = Modifier.weight(1f))
+        Text(row.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = cs.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(Fmt.money(s.net), style = MaterialTheme.typography.displayMedium, color = netColor(s.net), maxLines = 1)
+            Text("neto", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
         }
-        Spacer(Modifier.height(6.dp))
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Metric(s.netPercent?.let { "neto · ${Fmt.pct(it)}" } ?: "neto", Fmt.money(s.net), modifier = Modifier.weight(1f), valueColor = netColor(s.net))
-            Metric("por km", s.netPerKm?.let { Fmt.money(it) } ?: "—", modifier = Modifier.weight(1f))
-            Metric("por hora", s.netPerHour?.let { Fmt.money(it) } ?: "—", modifier = Modifier.weight(1f))
-        }
-        val extra = buildList {
-            add("${s.shiftCount} turno${if (s.shiftCount == 1) "" else "s"} · ${Fmt.duration(s.activeMs)}")
-            if (s.tripCount > 0) add("${s.tripCount} viajes")
-            s.emptyKm?.let { add("${Fmt.km(it, 0)} en vacío") }
-            if (row.fixedCosts > 0) add("neto con gastos fijos ${Fmt.money(row.netAfterFixed)}")
-        }
-        Text(extra.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+        Text(
+            buildList {
+                s.netPercent?.let { add("${Fmt.pct(it)} de ${Fmt.money(s.gross)} brutos") } ?: add("bruto ${Fmt.money(s.gross)}")
+                add("${s.shiftCount} turno${if (s.shiftCount == 1) "" else "s"}")
+                add("${Fmt.duration(s.activeMs)} al volante")
+            }.joinToString(" · "),
+            style = MaterialTheme.typography.bodySmall,
+            color = cs.onSurfaceVariant,
+        )
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-        row.shifts.forEach { shift -> ShiftLine(shift, onClick = { onOpenShift(shift.id) }) }
+        Spacer(Modifier.height(12.dp))
+        when (period) {
+            Period.WEEK -> {
+                val values = Reports.dailyNet(row.shifts, row.key, 7, zone)
+                val labels = (0 until 7).map { row.key.plusDays(it.toLong()).dayOfWeek.getDisplayName(TextStyle.NARROW, Fmt.locale).uppercase() }
+                BarChart(values, labels)
+            }
+            Period.MONTH -> {
+                val days = row.key.lengthOfMonth()
+                val values = Reports.dailyNet(row.shifts, row.key, days, zone)
+                val labels = (1..days).map { if (it == 1 || it % 5 == 0) it.toString() else "" }
+                BarChart(values, labels, height = 72.dp)
+            }
+            Period.DAY -> {
+                SplitBar(gross = s.gross, fuelCost = s.fuelCost)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Tile(s.emptyKm?.let { "${Fmt.km(it, 0)} en vacío" } ?: "recorridos", Fmt.km(s.km, 0), modifier = Modifier.weight(1f))
+            Tile("nafta · ${Fmt.liters(s.fuelLiters, 0)}", Fmt.money(s.fuelCost), modifier = Modifier.weight(1f), valueColor = fuelColor())
+            Tile("neto por hora", s.netPerHour?.let { Fmt.money(it) } ?: "—", modifier = Modifier.weight(1f))
+        }
+        if (row.fixedCosts > 0) {
+            Text(
+                "Con gastos fijos prorrateados (${Fmt.money(row.fixedCosts)}): neto ${Fmt.money(row.netAfterFixed)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = cs.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+        SectionTitle("Turnos")
+        row.shifts.forEachIndexed { i, shift ->
+            if (i > 0) HorizontalDivider(color = cs.outlineVariant)
+            ShiftLine(shift, showDay = period != Period.DAY, onClick = { onOpenShift(shift.id) })
+        }
     }
 }
 
 @Composable
-private fun ShiftLine(shift: Shift, onClick: () -> Unit) {
+private fun ShiftLine(shift: Shift, showDay: Boolean, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
     val gross = Calc.gross(shift)
     val net = Calc.net(shift)
     val pct = Calc.netPercent(shift)
+    val pending = shift.status == ShiftStatus.PENDING_CLOSE
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (showDay) {
+            val date = java.time.Instant.ofEpochMilli(shift.startedAt).atZone(ZoneId.systemDefault())
+            Column(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(cs.surfaceContainerHighest),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(date.dayOfWeek.getDisplayName(TextStyle.SHORT, Fmt.locale).uppercase().take(3), style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
+                Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.titleMedium)
+            }
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 Fmt.time(shift.startedAt) + (shift.endedAt?.let { "–" + Fmt.time(it) } ?: "") + " · " + Fmt.km(shift.km),
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.SemiBold,
             )
             Text(
-                if (shift.status == ShiftStatus.PENDING_CLOSE) "Sin cerrar: tocá para cargar los datos de DiDi"
-                else "bruto ${Fmt.money(gross)} · nafta ${Fmt.money(Calc.fuelCost(shift))}",
+                if (pending) "Sin cerrar: faltan los datos de DiDi"
+                else "bruto ${Fmt.money(gross)} · nafta ${Fmt.money(Calc.fuelCost(shift))}" + (if (shift.tripCount > 0) " · ${shift.tripCount} viajes" else ""),
                 style = MaterialTheme.typography.bodySmall,
-                color = if (shift.status == ShiftStatus.PENDING_CLOSE) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (pending) cs.tertiary else cs.onSurfaceVariant,
             )
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(Fmt.money(net), fontWeight = FontWeight.Bold, color = netColor(net))
-            Text(pct?.let { Fmt.pct(it) } ?: "", style = MaterialTheme.typography.bodySmall)
+            if (pending) {
+                Text("−" + Fmt.money(Calc.fuelCost(shift)), style = MaterialTheme.typography.titleMedium, color = cs.tertiary)
+                Text("nafta", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            } else {
+                Text(Fmt.money(net), style = MaterialTheme.typography.titleMedium, color = netColor(net))
+                Text(pct?.let { Fmt.pct(it) } ?: "", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            }
         }
     }
 }

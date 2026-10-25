@@ -14,6 +14,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,6 +60,23 @@ fun SettingsScreen(data: AppData, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text("Ajustes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+
+        SectionTitle("Tema")
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            val options = listOf("system" to "Sistema", "dark" to "Oscuro", "light" to "Claro")
+            options.forEachIndexed { i, (key, label) ->
+                SegmentedButton(
+                    selected = s.themeMode == key,
+                    onClick = { repo.updateSettings { it.copy(themeMode = key) } },
+                    shape = SegmentedButtonDefaults.itemShape(index = i, count = options.size),
+                ) { Text(label) }
+            }
+        }
+        Text(
+            "Oscuro es el tablero nocturno, pensado para mirar de reojo manejando. Claro es la libreta diurna, más cómoda para revisar en casa.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         SectionTitle("Auto")
         OutlinedTextField(value = brand, onValueChange = { brand = it }, label = { Text("Marca") }, singleLine = true, modifier = Modifier.fillMaxWidth())

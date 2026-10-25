@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -23,7 +25,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -31,7 +32,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.surair.driverprofit.App
 import com.surair.driverprofit.core.AppData
@@ -56,6 +57,7 @@ import com.surair.driverprofit.core.Shift
 import com.surair.driverprofit.core.ShiftStatus
 import com.surair.driverprofit.core.Summary
 import com.surair.driverprofit.tracking.Live
+import com.surair.driverprofit.tracking.LiveTracking
 import com.surair.driverprofit.tracking.TrackingService
 
 fun hasLocationPermission(context: Context): Boolean =
@@ -111,12 +113,6 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            "${settings.carBrand} ${settings.carModel} ${settings.carEngine}".trim(),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
         if (permissionDenied) {
             InfoCard(tone = CardTone.Error) {
                 Text("Sin permiso de ubicación no se puede medir el recorrido.", fontWeight = FontWeight.SemiBold)
@@ -138,10 +134,10 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
         }
 
         if (active != null) {
-            ActiveShiftCard(
+            ActiveDashboard(
+                data = data,
                 shift = active,
-                liveDistance = if (live?.shiftId == active.id) live?.distanceMeters else null,
-                gpsLine = gpsStatus(live, active, now),
+                live = if (live?.shiftId == active.id) live else null,
                 now = now,
                 onPause = { TrackingService.pause(context) },
                 onResume = { TrackingService.resume(context) },
@@ -150,18 +146,8 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
                 onRemoveTrip = { repo.removeTrip(active.id, it) },
             )
         } else {
-            Button(
-                onClick = { requestStart() },
-                modifier = Modifier.fillMaxWidth().height(64.dp),
-            ) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(28.dp))
-                Spacer(Modifier.size(8.dp))
-                Text("Iniciar turno", style = MaterialTheme.typography.titleLarge)
-            }
-            CostPerKmCard(settings.consumptionL100, settings.lastPricePerLiter)
+            IdleHeader(data = data, now = now, onStart = { requestStart() })
         }
-
-        TankCard(data = data, now = now)
 
         val today = Reports.today(data.shifts, now = now)
         val week = Reports.thisWeek(data.shifts, now = now)
@@ -212,9 +198,9 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
     }
 }
 
-private fun gpsStatus(live: com.surair.driverprofit.tracking.LiveTracking?, shift: Shift, now: Long): String {
-    if (shift.status == ShiftStatus.PAUSED) return if (live?.autoPaused == true) "En pausa (se pausó solo por falta de movimiento)" else "En pausa · GPS apagado"
-    if (live == null || live.shiftId != shift.id) return "Iniciando el servicio de GPS…"
+private fun gpsStatus(live: LiveTracking?, shift: Shift, now: Long): String {
+    if (shift.status == ShiftStatus.PAUSED) return if (live?.autoPaused == true) "Pausado solo por falta de movimiento" else "En pausa · GPS apagado"
+    if (live == null) return "Iniciando el servicio de GPS…"
     val fixAt = live.lastFixAt ?: return "Buscando señal de GPS…"
     if (now - fixAt > 20_000L) return "Sin señal de GPS hace ${(now - fixAt) / 1000} s"
     val acc = live.accuracyMeters?.let { "±${it.toInt()} m" } ?: ""
@@ -223,10 +209,26 @@ private fun gpsStatus(live: com.surair.driverprofit.tracking.LiveTracking?, shif
 }
 
 @Composable
-private fun ActiveShiftCard(
+private fun CarLine(data: AppData, detail: String) {
+    val s = data.settings
+    Column {
+        Text(
+            "${s.carBrand} ${s.carModel} ${s.carEngine}".trim().uppercase(),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            letterSpacing = 1.2.sp,
+        )
+        Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Tablero del turno en marcha: el neto manda, el resto acompaña. */
+@Composable
+private fun ActiveDashboard(
+    data: AppData,
     shift: Shift,
-    liveDistance: Double?,
-    gpsLine: String,
+    live: LiveTracking?,
     now: Long,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -234,78 +236,98 @@ private fun ActiveShiftCard(
     onAddTrip: () -> Unit,
     onRemoveTrip: (String) -> Unit,
 ) {
-    val meters = maxOf(liveDistance ?: 0.0, shift.distanceMeters)
+    val meters = maxOf(live?.distanceMeters ?: 0.0, shift.distanceMeters)
     val km = meters / 1000.0
     val cost = Calc.fuelCost(km, shift.consumptionL100, shift.pricePerLiter)
     val gross = Calc.tripsTotal(shift)
     val net = gross - cost
     val pct = Calc.netPercent(gross, net)
     val paused = shift.status == ShiftStatus.PAUSED
+    val activeMs = Calc.activeMs(shift, now)
+    val perHour = if (activeMs > 10 * 60_000L && gross > 0) net / (activeMs / 3_600_000.0) else null
+    val cs = MaterialTheme.colorScheme
 
-    InfoCard(tone = if (paused) CardTone.Warning else CardTone.Primary) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-            AssistChip(onClick = {}, label = { Text(if (paused) "En pausa" else "En marcha") })
-            Text(Fmt.clock(Calc.activeMs(shift, now)), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
-        Text(gpsLine, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-        Spacer(Modifier.height(12.dp))
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Metric("recorridos", Fmt.km(km), modifier = Modifier.weight(1f), big = true)
-            Metric("en nafta", Fmt.money(cost), modifier = Modifier.weight(1f), big = true)
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Metric("bruto (${shift.trips.size} viajes)", Fmt.money(gross), modifier = Modifier.weight(1f))
-            Metric(
-                if (pct != null) "neto · ${Fmt.pct(pct)}" else "neto",
-                Fmt.money(net),
-                modifier = Modifier.weight(1f),
-                valueColor = netColor(net),
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            CarLine(data, gpsStatus(live, shift, now))
+            StatusPill(
+                text = if (paused) "En pausa" else "En marcha",
+                detail = Fmt.clock(activeMs),
+                color = if (paused) cs.tertiary else cs.primary,
             )
         }
-        Text(
-            "Costo por km: ${Fmt.money(Calc.costPerKm(shift.consumptionL100, shift.pricePerLiter))} · ${Fmt.l100(shift.consumptionL100)} · ${Fmt.money(shift.pricePerLiter)}/L",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        Spacer(Modifier.height(12.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+        Column(modifier = Modifier.padding(top = 6.dp)) {
+            Text("Neto hasta ahora", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+            Text(Fmt.money(net), style = MaterialTheme.typography.displayLarge, color = netColor(net), maxLines = 1)
+            Text(
+                buildString {
+                    if (pct != null) append(Fmt.pct(pct)).append(" del bruto") else append("Anotá los viajes para ver el neto en vivo")
+                    if (perHour != null) append(" · ").append(Fmt.money(perHour)).append(" por hora")
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = cs.secondary,
+            )
+        }
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Tile("km", Fmt.dec(km, 1), modifier = Modifier.weight(1f))
+            Tile("nafta", Fmt.money(cost), modifier = Modifier.weight(1f), valueColor = fuelColor())
+            Tile(if (shift.trips.isEmpty()) "bruto" else "bruto · ${shift.trips.size} viajes", Fmt.money(gross), modifier = Modifier.weight(1f))
+        }
+
+        TankCard(data = data, now = now, compact = true)
+
+        Button(
+            onClick = onAddTrip,
+            modifier = Modifier.fillMaxWidth().height(64.dp),
+            shape = RoundedCornerShape(18.dp),
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Viaje terminado", style = MaterialTheme.typography.titleLarge)
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (paused) {
-                Button(onClick = onResume, modifier = Modifier.weight(1f)) {
+                FilledTonalButton(onClick = onResume, modifier = Modifier.weight(1f).height(56.dp), shape = RoundedCornerShape(16.dp)) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.size(6.dp))
-                    Text("Reanudar")
+                    Spacer(Modifier.width(6.dp))
+                    Text("Reanudar", style = MaterialTheme.typography.titleMedium)
                 }
             } else {
-                FilledTonalButton(onClick = onPause, modifier = Modifier.weight(1f)) {
+                FilledTonalButton(onClick = onPause, modifier = Modifier.weight(1f).height(56.dp), shape = RoundedCornerShape(16.dp)) {
                     Icon(Icons.Filled.Pause, contentDescription = null)
-                    Spacer(Modifier.size(6.dp))
-                    Text("Pausar")
+                    Spacer(Modifier.width(6.dp))
+                    Text("Pausar", style = MaterialTheme.typography.titleMedium)
                 }
             }
             Button(
                 onClick = onStop,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
+                modifier = Modifier.weight(1f).height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = cs.errorContainer, contentColor = cs.error),
             ) {
                 Icon(Icons.Filled.Stop, contentDescription = null)
-                Spacer(Modifier.size(6.dp))
-                Text("Terminar")
+                Spacer(Modifier.width(6.dp))
+                Text("Terminar", style = MaterialTheme.typography.titleMedium)
             }
         }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onAddTrip, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Add, contentDescription = null)
-            Spacer(Modifier.size(6.dp))
-            Text("Viaje terminado: cargar ganancia")
-        }
+
         if (shift.trips.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider()
-            shift.trips.sortedByDescending { it.at }.take(8).forEach { t ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                    Text("${Fmt.time(t.at)} · ${Fmt.money(t.amount)}", style = MaterialTheme.typography.bodyMedium)
-                    IconButton(onClick = { onRemoveTrip(t.id) }) { Icon(Icons.Filled.Delete, contentDescription = "Borrar viaje") }
+            InfoCard {
+                SectionTitle("Viajes de este turno")
+                shift.trips.sortedByDescending { it.at }.take(8).forEachIndexed { i, t ->
+                    if (i > 0) HorizontalDivider(color = cs.outlineVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(Fmt.time(t.at), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                            Text("Viaje ${shift.trips.indexOf(t) + 1}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(Fmt.money(t.amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                            IconButton(onClick = { onRemoveTrip(t.id) }) { Icon(Icons.Filled.Delete, contentDescription = "Borrar viaje", tint = cs.onSurfaceVariant) }
+                        }
+                    }
                 }
             }
         }
@@ -313,39 +335,72 @@ private fun ActiveShiftCard(
 }
 
 @Composable
-private fun CostPerKmCard(consumption: Double, price: Double) {
-    InfoCard {
-        if (price <= 0) {
-            Text("Falta el precio del litro", fontWeight = FontWeight.SemiBold)
-            Text("Se te va a pedir al iniciar el turno, o cargalo registrando una carga de nafta.", style = MaterialTheme.typography.bodySmall)
-        } else {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Metric("por km en nafta", Fmt.money(Calc.costPerKm(consumption, price)), modifier = Modifier.weight(1f))
-                Metric("consumo", Fmt.l100(consumption), modifier = Modifier.weight(1f))
-            }
-            Text("Litro a ${Fmt.money(price)}. Se ajusta en Nafta o Ajustes.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+private fun IdleHeader(data: AppData, now: Long, onStart: () -> Unit) {
+    val s = data.settings
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        CarLine(data, "Sin turno en curso")
+        Button(
+            onClick = onStart,
+            modifier = Modifier.fillMaxWidth().height(72.dp),
+            shape = RoundedCornerShape(20.dp),
+        ) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(30.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Iniciar turno", style = MaterialTheme.typography.headlineSmall)
         }
+        if (s.lastPricePerLiter <= 0) {
+            InfoCard(tone = CardTone.Warning) {
+                Text("Falta el precio del litro", fontWeight = FontWeight.SemiBold)
+                Text("Se te va a pedir al iniciar el turno, o cargalo registrando una carga de nafta.", style = MaterialTheme.typography.bodySmall)
+            }
+        } else {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Tile("por km en nafta", Fmt.money(Calc.costPerKm(s.consumptionL100, s.lastPricePerLiter)), modifier = Modifier.weight(1f), valueColor = fuelColor())
+                Tile("consumo", Fmt.l100(s.consumptionL100), modifier = Modifier.weight(1f))
+                Tile("litro", Fmt.money(s.lastPricePerLiter), modifier = Modifier.weight(1f))
+            }
+        }
+        TankCard(data = data, now = now, compact = false)
     }
 }
 
+/** Lo que queda de la última carga: anillo + km + plata. */
 @Composable
-fun TankCard(data: AppData, now: Long) {
+fun TankCard(data: AppData, now: Long, compact: Boolean = false) {
     val s = data.settings
     val liters = Calc.tankBalanceLiters(data, now)
+    val lastLoad = data.fuelLoads.maxByOrNull { it.at }
+    val cs = MaterialTheme.colorScheme
     InfoCard {
-        SectionTitle("Nafta en el tanque (estimado)")
-        if (liters == null) {
+        if (liters == null || lastLoad == null) {
+            SectionTitle("Nafta en el tanque")
             Text("Registrá una carga de nafta en la pestaña Nafta para ver cuánto te queda y cuántos km rinde.", style = MaterialTheme.typography.bodyMedium)
         } else {
             val km = Calc.kmForLiters(liters, s.consumptionL100)
             val money = liters * s.lastPricePerLiter
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Metric("litros", Fmt.liters(liters), modifier = Modifier.weight(1f), valueColor = if (liters < 3) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
-                Metric("km que rinden", Fmt.km(km, 0), modifier = Modifier.weight(1f))
-                Metric("en plata", Fmt.money(money), modifier = Modifier.weight(1f))
-            }
-            if (liters < 0) {
-                Text("Quedó negativo: hiciste km que no se cubren con las cargas registradas. Ajustá el saldo desde Nafta.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+            val fraction = if (lastLoad.liters > 0) (liters / lastLoad.liters).toFloat() else 0f
+            val recovered = Reports.byFuelLoad(data, now).firstOrNull()?.recoveredPercent
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Ring(fraction = fraction, size = if (compact) 52.dp else 64.dp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Text("Carga de ${Fmt.money(lastLoad.amount)}", style = MaterialTheme.typography.titleMedium)
+                        Text(Fmt.liters(liters), style = MaterialTheme.typography.bodyMedium, color = if (liters < 3) cs.error else cs.onSurfaceVariant)
+                    }
+                    Text(
+                        if (liters < 0) "Hiciste más km de los que cubren las cargas. Ajustá el saldo desde Nafta."
+                        else "Quedan unos ${Fmt.km(km, 0)} · ${Fmt.money(money)} en nafta",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (liters < 0) cs.error else cs.onSurface,
+                    )
+                    if (recovered != null) {
+                        Text(
+                            if (recovered >= 100) "Ya recuperaste el ${Fmt.pct(recovered)} de esta carga" else "Recuperaste el ${Fmt.pct(recovered)} de esta carga",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = cs.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }
@@ -353,27 +408,39 @@ fun TankCard(data: AppData, now: Long) {
 
 @Composable
 fun SummaryCard(title: String, s: Summary) {
+    val cs = MaterialTheme.colorScheme
     InfoCard {
         SectionTitle(title)
         if (s.shiftCount == 0) {
-            Text("Sin turnos todavía.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sin turnos todavía.", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
         } else {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Metric("km", Fmt.dec(s.km, 1), modifier = Modifier.weight(1f))
-                Metric("bruto", Fmt.money(s.gross), modifier = Modifier.weight(1f))
-                Metric("nafta", Fmt.money(s.fuelCost), modifier = Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(6.dp))
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Metric(
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(Fmt.money(s.net), style = MaterialTheme.typography.displaySmall, color = netColor(s.net))
+                Text(
                     s.netPercent?.let { "neto · ${Fmt.pct(it)}" } ?: "neto",
-                    Fmt.money(s.net),
-                    modifier = Modifier.weight(1f),
-                    valueColor = netColor(s.net),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = cs.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp),
                 )
-                Metric("por hora neto", s.netPerHour?.let { Fmt.money(it) } ?: "—", modifier = Modifier.weight(1f))
-                Metric("turnos", "${s.shiftCount} · ${Fmt.duration(s.activeMs)}", modifier = Modifier.weight(1f))
             }
+            Spacer(Modifier.height(8.dp))
+            SplitBar(gross = s.gross, fuelCost = s.fuelCost)
+            Spacer(Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Metric("bruto", Fmt.money(s.gross), modifier = Modifier.weight(1f))
+                Metric("nafta", Fmt.money(s.fuelCost), modifier = Modifier.weight(1f), valueColor = fuelColor())
+                Metric("km", Fmt.dec(s.km, 0), modifier = Modifier.weight(1f))
+            }
+            Text(
+                buildList {
+                    add("${s.shiftCount} turno${if (s.shiftCount == 1) "" else "s"} · ${Fmt.duration(s.activeMs)}")
+                    s.netPerHour?.let { add("${Fmt.money(it)} por hora") }
+                    s.emptyKm?.let { add("${Fmt.km(it, 0)} en vacío") }
+                }.joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = cs.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
     }
 }

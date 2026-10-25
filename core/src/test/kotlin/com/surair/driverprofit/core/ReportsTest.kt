@@ -39,6 +39,19 @@ class ReportsTest {
     }
 
     @Test
+    fun dailyNetFillsEmptyDays() {
+        val shifts = listOf(
+            shift("a", at(2026, 10, 19, 9), 50.0, 20_000.0),
+            shift("b", at(2026, 10, 21, 9), 10.0, 5_000.0),
+        )
+        val week = Reports.dailyNet(shifts, java.time.LocalDate.of(2026, 10, 19), 7, zone)
+        assertEquals(7, week.size)
+        assertEquals(15_000.0, week[0], 0.001)
+        assertEquals(0.0, week[1], 0.001)
+        assertEquals(4_000.0, week[2], 0.001)
+    }
+
+    @Test
     fun fuelLoadWindows() {
         val l1 = FuelLoad("l1", at(2026, 10, 19, 8), 15_000.0, 1500.0, 10.0)
         val l2 = FuelLoad("l2", at(2026, 10, 22, 8), 15_000.0, 1500.0, 10.0)

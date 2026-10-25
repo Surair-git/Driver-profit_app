@@ -133,6 +133,15 @@ object Reports {
         }.reversed()
     }
 
+    /** Neto por día a partir de `from`, durante `days` días (para gráficos de barras). */
+    fun dailyNet(shifts: List<Shift>, from: LocalDate, days: Int, zone: ZoneId = ZoneId.systemDefault(), now: Long = System.currentTimeMillis()): List<Double> {
+        val byDay = shifts.groupBy { localDate(it.startedAt, zone) }
+        return (0 until days).map { i ->
+            val d = from.plusDays(i.toLong())
+            byDay[d]?.let { summarize(it, now).net } ?: 0.0
+        }
+    }
+
     fun today(shifts: List<Shift>, zone: ZoneId = ZoneId.systemDefault(), now: Long = System.currentTimeMillis()): Summary {
         val today = localDate(now, zone)
         return summarize(shifts.filter { localDate(it.startedAt, zone) == today }, now)

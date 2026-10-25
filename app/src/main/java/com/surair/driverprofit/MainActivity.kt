@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.surair.driverprofit.tracking.TrackingService
 import com.surair.driverprofit.ui.AppRoot
 import com.surair.driverprofit.ui.AppTheme
@@ -13,7 +15,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            AppTheme {
+            val data by App.repo.data.collectAsState()
+            AppTheme(themeMode = data.settings.themeMode) {
                 AppRoot()
             }
         }
