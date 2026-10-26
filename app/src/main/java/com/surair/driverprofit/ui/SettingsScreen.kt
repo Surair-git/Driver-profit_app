@@ -1,7 +1,21 @@
 package com.surair.driverprofit.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.provider.Settings as AndroidSettings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.Alignment
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.surair.driverprofit.tracking.AutoStart
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +47,110 @@ import com.surair.driverprofit.core.AppData
 import com.surair.driverprofit.core.Calc
 import com.surair.driverprofit.core.Fmt
 import com.surair.driverprofit.export.CsvExport
+
+@Composable
+private fun AutoStartSection(data: AppData) {
+    val context = LocalContext.current
+    val repo = App.repo
+    val s = data.settings
+    val cs = MaterialTheme.colorScheme
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var accessibilityOn by remember { mutableStateOf(AutoStart.isAccessibilityEnabled(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) accessibilityOn = AutoStart.isAccessibilityEnabled(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val bluetoothLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        repo.updateSettings { it.copy(triggerOnBluetooth = granted) }
+    }
+    var btName by remember(s.bluetoothDeviceName) { mutableStateOf(s.bluetoothDeviceName) }
+
+    SectionTitle("Inicio automático")
+    Text("Cuando abrís DiDi", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        val options = listOf("off" to "Nada", "ask" to "Preguntar", "auto" to "Iniciar solo")
+        options.forEachIndexed { i, (key, label) ->
+            SegmentedButton(
+                selected = s.autoStartMode == key,
+                onClick = { repo.updateSettings { it.copy(autoStartMode = key) } },
+                shape = SegmentedButtonDefaults.itemShape(index = i, count = options.size),
+            ) { Text(label) }
+        }
+    }
+    if (s.autoStartMode != "off") {
+        InfoCard(tone = if (accessibilityOn) CardTone.Primary else CardTone.Warning) {
+            Text(
+                if (accessibilityOn) "Detección de DiDi activada" else "Falta activar la detección de DiDi",
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                if (accessibilityOn) "Driver Profit se entera cuando DiDi pasa al frente. No lee el contenido de la pantalla."
+                else "Tocá el botón, buscá \"Driver Profit: detectar DiDi\" y activalo. En Android 13 o más nuevo, si aparece bloqueado, primero andá a Información de la app, menú de tres puntos, \"Permitir configuración restringida\".",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (!accessibilityOn) {
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = {
+                    runCatching { context.startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }) { Text("Abrir Accesibilidad") }
+            }
+        }
+        if (s.autoStartMode == "auto") {
+            Text(
+                "Si Android no deja arrancar el GPS desde el fondo, en vez de iniciar solo te llega la notificación para iniciarlo con un toque.",
+                style = MaterialTheme.typography.bodySmall,
+                color = cs.onSurfaceVariant,
+            )
+        }
+    }
+
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Avisar al conectar el cargador", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text("Notificación con el botón \"Iniciar turno\" cada vez que enchufás el celular.", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+        }
+        Switch(checked = s.triggerOnCharger, onCheckedChange = { on -> repo.updateSettings { it.copy(triggerOnCharger = on) } })
+    }
+
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Avisar al conectar el Bluetooth del auto", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text("Pide el permiso de Bluetooth para saber qué dispositivo se conectó.", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+        }
+        Switch(
+            checked = s.triggerOnBluetooth,
+            onCheckedChange = { on ->
+                if (!on) {
+                    repo.updateSettings { it.copy(triggerOnBluetooth = false) }
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    bluetoothLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                } else {
+                    repo.updateSettings { it.copy(triggerOnBluetooth = true) }
+                }
+            },
+        )
+    }
+    if (s.triggerOnBluetooth) {
+        OutlinedTextField(
+            value = btName,
+            onValueChange = { btName = it; repo.updateSettings { st -> st.copy(bluetoothDeviceName = it) } },
+            label = { Text("Solo si el nombre contiene (opcional)") },
+            supportingText = { Text("Por ejemplo \"Palio\" o \"Car\". Vacío = cualquier dispositivo Bluetooth.") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    Text(
+        "No se avisa si ya hay un turno en marcha, ni dentro de los 15 minutos de un aviso o de un turno terminado.",
+        style = MaterialTheme.typography.bodySmall,
+        color = cs.onSurfaceVariant,
+    )
+}
 
 @Composable
 fun SettingsScreen(data: AppData, modifier: Modifier = Modifier) {
@@ -132,6 +250,8 @@ fun SettingsScreen(data: AppData, modifier: Modifier = Modifier) {
             },
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Abrir optimización de batería") }
+
+        AutoStartSection(data)
 
         SectionTitle("Datos")
         Text(

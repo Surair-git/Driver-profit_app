@@ -21,6 +21,14 @@ data class Settings(
     val tankBaselineAt: Long = 0L,
     /** "system", "dark" o "light". */
     val themeMode: String = "system",
+    /** Qué hacer cuando DiDi pasa al frente: "off", "ask" (notificación) o "auto" (iniciar solo). */
+    val autoStartMode: String = "off",
+    /** Avisar con una notificación al conectar el cargador. */
+    val triggerOnCharger: Boolean = false,
+    /** Avisar al conectarse un dispositivo Bluetooth (el del auto). */
+    val triggerOnBluetooth: Boolean = false,
+    /** Si no está vacío, solo dispositivos cuyo nombre contenga este texto. */
+    val bluetoothDeviceName: String = "",
 )
 
 @Serializable

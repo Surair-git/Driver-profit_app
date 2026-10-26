@@ -21,6 +21,10 @@ precio se cambian en Ajustes.
 - **Historial** por día, semana y mes, con neto por km y por hora. Exportación a CSV: un resumen
   por día en tabla, y los turnos y las cargas en bloques verticales "Campo;Valor", fáciles de leer
   en el celular y en Excel o Sheets en español.
+- **Inicio automático** (Ajustes › Inicio automático): al abrir DiDi la app puede preguntarte con una
+  notificación o iniciar el turno sola (requiere activar el servicio de accesibilidad "Driver Profit:
+  detectar DiDi", que solo mira qué app está al frente). También puede avisar al conectar el cargador o
+  el Bluetooth del auto.
 - **Dos temas**: tablero nocturno (oscuro, para mirar de reojo manejando) y libreta diurna (claro).
   Se elige en Ajustes o sigue al sistema.
 - Todo se guarda en el teléfono. Sin cuenta ni servidor.

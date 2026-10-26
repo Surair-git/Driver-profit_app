@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Driver Profit</string>
+    <string name="accessibility_service_label">Driver Profit: detectar DiDi</string>
+    <string name="accessibility_description">Detecta cuándo abrís DiDi Conductor para ofrecerte iniciar el turno o iniciarlo solo. No lee el contenido de la pantalla ni de otras apps.</string>
 </resources>
