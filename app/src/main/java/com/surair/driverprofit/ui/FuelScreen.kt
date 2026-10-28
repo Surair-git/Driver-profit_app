@@ -47,6 +47,7 @@ fun FuelScreen(data: AppData, modifier: Modifier = Modifier) {
     val now = rememberNow(data.activeShift != null)
     var showAdd by remember { mutableStateOf(false) }
     var showAdjust by remember { mutableStateOf(false) }
+    var showManualKm by remember { mutableStateOf(false) }
     var deleteId by remember { mutableStateOf<String?>(null) }
     var calcAmount by remember { mutableStateOf("15.000") }
 
@@ -62,7 +63,10 @@ fun FuelScreen(data: AppData, modifier: Modifier = Modifier) {
                 Column {
                     TankCard(data = data, now = now)
                     Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = { showAdjust = true }) { Text("Ajustar litros en el tanque") }
+                    Row {
+                        TextButton(onClick = { showManualKm = true }) { Text("Hice km sin la app") }
+                        TextButton(onClick = { showAdjust = true }) { Text("Ajustar litros") }
+                    }
                 }
             }
             item {
@@ -138,6 +142,20 @@ fun FuelScreen(data: AppData, modifier: Modifier = Modifier) {
         )
     }
 
+    if (showManualKm) {
+        AmountDialog(
+            title = "Km hechos sin la app",
+            label = "Kilómetros",
+            decimal = true,
+            prefix = "",
+            onDismiss = { showManualKm = false },
+            onConfirm = { km ->
+                repo.addManualKm(km)
+                showManualKm = false
+            },
+        )
+    }
+
     if (showAdjust) {
         AmountDialog(
             title = "Litros en el tanque ahora",
@@ -180,16 +198,17 @@ private fun FuelLoadCard(row: FuelLoadRow, isLatest: Boolean, onDelete: () -> Un
         }
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
         Text(if (isLatest) "Desde esta carga" else "Hasta la carga siguiente", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (sum.shiftCount == 0) {
-            Text("Sin turnos registrados en este período.", style = MaterialTheme.typography.bodySmall)
+        if (sum.shiftCount == 0 && sum.personalCount == 0) {
+            Text("Sin recorridos registrados en este período.", style = MaterialTheme.typography.bodySmall)
         } else {
             Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                Metric("km", Fmt.dec(sum.km, 0), modifier = Modifier.weight(1f))
+                Metric("km de trabajo", Fmt.dec(sum.km, 0), modifier = Modifier.weight(1f))
                 Metric("bruto", Fmt.money(sum.gross), modifier = Modifier.weight(1f))
                 Metric("recuperado", row.recoveredPercent?.let { Fmt.pct(it) } ?: "—", modifier = Modifier.weight(1f))
             }
             Text(
-                "Usaste ${Fmt.liters(sum.fuelLiters)} de ${Fmt.liters(l.liters)} (${Fmt.money(sum.fuelCost)}) · neto ${Fmt.money(sum.net)}",
+                "Usaste ${Fmt.liters(sum.totalLiters)} de ${Fmt.liters(l.liters)} (${Fmt.money(sum.fuelCost + sum.personalFuelCost)}) · neto ${Fmt.money(sum.net)}" +
+                    (if (sum.personalKm > 0) " · ${Fmt.km(sum.personalKm, 0)} personales" else ""),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 6.dp),
             )

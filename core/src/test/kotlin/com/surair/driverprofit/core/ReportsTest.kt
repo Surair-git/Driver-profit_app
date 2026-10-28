@@ -39,6 +39,25 @@ class ReportsTest {
     }
 
     @Test
+    fun personalTripsCountFuelButNotEarnings() {
+        val work = shift("a", at(2026, 10, 19, 9), 50.0, 20_000.0)
+        val personal = shift("p", at(2026, 10, 19, 15), 30.0, 0.0).copy(kind = ShiftKind.PERSONAL, passengerKm = 0.0, tripCount = 0)
+        val s = Reports.summarize(listOf(work, personal))
+        assertEquals(1, s.shiftCount)
+        assertEquals(50.0, s.km, 0.001)
+        assertEquals(20_000.0, s.gross, 0.001)
+        assertEquals(5_000.0, s.fuelCost, 0.001)
+        assertEquals(1, s.personalCount)
+        assertEquals(30.0, s.personalKm, 0.001)
+        assertEquals(3_000.0, s.personalFuelCost, 0.001)
+        assertEquals(80.0, s.totalKm, 0.001)
+        // El tanque y el consumo observado sí cuentan todo
+        val load = FuelLoad("l1", at(2026, 10, 19, 8), 15_000.0, 1000.0, 15.0)
+        val data = AppData(shifts = listOf(work, personal), fuelLoads = listOf(load))
+        assertEquals(15.0 - 8.0, Calc.tankBalanceLiters(data, at(2026, 10, 20, 0))!!, 0.001)
+    }
+
+    @Test
     fun dailyNetFillsEmptyDays() {
         val shifts = listOf(
             shift("a", at(2026, 10, 19, 9), 50.0, 20_000.0),
@@ -79,6 +98,6 @@ class ReportsTest {
         assertEquals(true, csv.contains("Id;a\n"))
         val daily = Csv.dailySummary(shifts, 0.0, zone)
         assertEquals(2, daily.trim().lines().size)
-        assertEquals(true, daily.lines()[1].endsWith(";20000;5000;15000;75,0;15000"))
+        assertEquals(true, daily.lines()[1].endsWith(";20000;5000;15000;75,0;15000;0,0;0"))
     }
 }

@@ -20,6 +20,8 @@ data class Settings(
     val stopPromptSeconds: Int = 30,
     /** Si se pausó por una parada, reanudar solo cuando el auto vuelve a moverse. */
     val smartResume: Boolean = true,
+    /** Detectar con el acelerómetro que el teléfono va en un vehículo y preguntar si arrancó un recorrido. */
+    val vehicleDetection: Boolean = false,
     /** Leer el recuadro de ganancias del día de DiDi capturando la pantalla. */
     val didiCaptureEnabled: Boolean = true,
     /** Cada cuántos minutos leer el recuadro. */
@@ -60,6 +62,10 @@ data class TripIncome(
 @Serializable
 enum class ShiftStatus { RUNNING, PAUSED, PENDING_CLOSE, CLOSED }
 
+/** Turno de trabajo con DiDi, o uso personal del auto (gasta nafta pero no entra en la ganancia). */
+@Serializable
+enum class ShiftKind { WORK, PERSONAL }
+
 @Serializable
 data class Shift(
     val id: String,
@@ -84,6 +90,9 @@ data class Shift(
     val didiPerKm: Double = 0.0,
     val notes: String = "",
     val status: ShiftStatus,
+    val kind: ShiftKind = ShiftKind.WORK,
+    /** Km cargados a mano (sin GPS), por ejemplo un viaje hecho con la app cerrada. */
+    val manual: Boolean = false,
     // Lectura del recuadro "ganancias del día" de DiDi durante el turno.
     /** Lo que marcaba el recuadro en la primera lectura del turno (o 0 después de medianoche). */
     val didiDayStart: Double? = null,
@@ -94,6 +103,7 @@ data class Shift(
     val didiLastReadAt: Long? = null,
 ) {
     val isActive: Boolean get() = status == ShiftStatus.RUNNING || status == ShiftStatus.PAUSED
+    val isWork: Boolean get() = kind == ShiftKind.WORK
     val km: Double get() = distanceMeters / 1000.0
     /** Bruto del turno según el recuadro de DiDi; 0 si todavía no hubo lectura. */
     val didiGross: Double get() {

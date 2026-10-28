@@ -12,6 +12,12 @@ precio se cambian en Ajustes.
 - **Turno con inicio / pausa / fin.** Corre como servicio en segundo plano con una notificación fija
   que muestra km, nafta gastada y neto, con botones Pausar y Terminar. Sigue midiendo mientras DiDi
   está en pantalla o con la pantalla apagada.
+- **Turno DiDi o viaje personal.** Mismo odómetro para los dos. El viaje personal descuenta nafta del
+  tanque y entra en el consumo observado, pero no en la ganancia. Los km hechos con la app cerrada se
+  cargan a mano desde Nafta ("Hice km sin la app").
+- **Detección de vehículo.** Con el permiso "Actividad física", los servicios de Google avisan por
+  acelerómetro cuando el teléfono va en un vehículo, aunque la app esté cerrada: llega una notificación
+  con "Turno DiDi" y "Viaje personal". Al bajar del auto tras un rato quieto, sugiere terminar.
 - **Detección de paradas.** El GPS solo suma km cuando hay velocidad de marcha, así parado no
   "inventa" metros. Pasado un tiempo de gracia sin movimiento (30 s por defecto, editable) pregunta
   si el auto se paró para pausar el conteo; si pausás, se reanuda solo cuando volvés a arrancar.

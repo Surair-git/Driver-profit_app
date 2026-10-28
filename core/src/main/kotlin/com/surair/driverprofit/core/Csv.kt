@@ -44,7 +44,8 @@ object Csv {
             val activeMs = Calc.activeMs(s, s.endedAt ?: s.startedAt)
             val emptyKm = Calc.emptyKm(s)
 
-            sb.row("Turno", Fmt.dateTime(s.startedAt, zone))
+            sb.row("Recorrido", Fmt.dateTime(s.startedAt, zone))
+            sb.row("Tipo", if (s.isWork) "Turno DiDi" else if (s.manual) "Personal (km a mano)" else "Personal")
             sb.row("Fin", s.endedAt?.let { Fmt.time(it, zone) } ?: "")
             sb.row("Estado", statusLabel(s.status))
             sb.row("Tiempo activo", Fmt.duration(activeMs))
@@ -94,7 +95,7 @@ object Csv {
     /** Tabla compacta de un renglón por día, para ver la evolución de un vistazo. */
     fun dailySummary(shifts: List<Shift>, monthlyFixedCosts: Double, zone: ZoneId = ZoneId.systemDefault()): String {
         val sb = StringBuilder()
-        sb.append(listOf("Día", "Turnos", "Horas activas", "Km", "Km en vacío", "Bruto", "Nafta", "Neto", "Neto sobre bruto (%)", "Neto por hora").joinToString(SEP)).append('\n')
+        sb.append(listOf("Día", "Turnos", "Horas activas", "Km", "Km en vacío", "Bruto", "Nafta", "Neto", "Neto sobre bruto (%)", "Neto por hora", "Km personales", "Nafta personal").joinToString(SEP)).append('\n')
         for (row in Reports.byPeriod(shifts, Period.DAY, monthlyFixedCosts, zone)) {
             val s = row.summary
             sb.append(
@@ -109,6 +110,8 @@ object Csv {
                     num(s.net),
                     s.netPercent?.let { num(it, 1) } ?: "",
                     s.netPerHour?.let { num(it) } ?: "",
+                    num(s.personalKm, 1),
+                    num(s.personalFuelCost),
                 ).joinToString(SEP) { esc(it) },
             ).append('\n')
         }

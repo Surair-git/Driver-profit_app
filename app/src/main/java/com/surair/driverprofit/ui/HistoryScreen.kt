@@ -127,6 +127,14 @@ private fun PeriodCard(row: PeriodRow, period: Period, data: AppData, onOpenShif
             Tile("nafta · ${Fmt.liters(s.fuelLiters, 0)}", Fmt.money(s.fuelCost), modifier = Modifier.weight(1f), valueColor = fuelColor())
             Tile("neto por hora", s.netPerHour?.let { Fmt.money(it) } ?: "—", modifier = Modifier.weight(1f))
         }
+        if (s.personalKm > 0) {
+            Text(
+                "Uso personal: ${Fmt.km(s.personalKm, 0)} · ${Fmt.money(s.personalFuelCost)} de nafta, fuera de la ganancia",
+                style = MaterialTheme.typography.bodySmall,
+                color = cs.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
         if (row.fixedCosts > 0) {
             Text(
                 "Con gastos fijos prorrateados (${Fmt.money(row.fixedCosts)}): neto ${Fmt.money(row.netAfterFixed)}",
@@ -137,7 +145,7 @@ private fun PeriodCard(row: PeriodRow, period: Period, data: AppData, onOpenShif
         }
 
         Spacer(Modifier.height(8.dp))
-        SectionTitle("Turnos")
+        SectionTitle("Recorridos")
         row.shifts.forEachIndexed { i, shift ->
             if (i > 0) HorizontalDivider(color = cs.outlineVariant)
             ShiftLine(shift, showDay = period != Period.DAY, onClick = { onOpenShift(shift.id) })
@@ -152,6 +160,7 @@ private fun ShiftLine(shift: Shift, showDay: Boolean, onClick: () -> Unit) {
     val net = Calc.net(shift)
     val pct = Calc.netPercent(shift)
     val pending = shift.status == ShiftStatus.PENDING_CLOSE
+    val personal = !shift.isWork
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -178,14 +187,18 @@ private fun ShiftLine(shift: Shift, showDay: Boolean, onClick: () -> Unit) {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                if (pending) "Sin cerrar: faltan los datos de DiDi"
-                else "bruto ${Fmt.money(gross)} · nafta ${Fmt.money(Calc.fuelCost(shift))}" + (if (shift.tripCount > 0) " · ${shift.tripCount} viajes" else ""),
+                when {
+                    personal && shift.manual -> "Personal · km cargados a mano"
+                    personal -> "Personal · fuera de la ganancia"
+                    pending -> "Sin cerrar: faltan los datos de DiDi"
+                    else -> "bruto ${Fmt.money(gross)} · nafta ${Fmt.money(Calc.fuelCost(shift))}" + (if (shift.tripCount > 0) " · ${shift.tripCount} viajes" else "")
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = if (pending) cs.tertiary else cs.onSurfaceVariant,
             )
         }
         Column(horizontalAlignment = Alignment.End) {
-            if (pending) {
+            if (pending || personal) {
                 Text("−" + Fmt.money(Calc.fuelCost(shift)), style = MaterialTheme.typography.titleMedium, color = cs.tertiary)
                 Text("nafta", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
             } else {

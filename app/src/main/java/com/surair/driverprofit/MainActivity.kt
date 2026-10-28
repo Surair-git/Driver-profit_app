@@ -8,6 +8,8 @@ import android.widget.Toast
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
 import com.surair.driverprofit.core.DidiParser
+import com.surair.driverprofit.core.ShiftKind
+import com.surair.driverprofit.tracking.StartRequest
 import com.surair.driverprofit.tracking.Ocr
 import com.surair.driverprofit.tracking.OcrInbox
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +23,6 @@ import androidx.compose.runtime.getValue
 import com.surair.driverprofit.tracking.TrackingService
 import com.surair.driverprofit.ui.AppRoot
 import com.surair.driverprofit.ui.AppTheme
-import com.surair.driverprofit.ui.hasLocationPermission
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,12 +83,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Pedido de inicio automático que no se pudo atender desde el fondo.
-        if (intent?.getBooleanExtra(EXTRA_START_SHIFT, false) == true) {
+        // Pedido de inicio que llega desde una notificación: lo atiende la pantalla principal,
+        // que pide los permisos y el consentimiento de captura si hacen falta.
+        intent?.getStringExtra(EXTRA_START_SHIFT)?.let { kindName ->
             intent.removeExtra(EXTRA_START_SHIFT)
-            if (App.repo.data.value.activeShift == null && hasLocationPermission(this)) {
-                App.repo.startShift()
-            }
+            runCatching { ShiftKind.valueOf(kindName) }.getOrNull()?.let { StartRequest.pending.value = it }
         }
         // Si quedó un turno activo guardado pero el servicio no está corriendo
         // (por ejemplo, el sistema lo mató), lo volvemos a levantar.

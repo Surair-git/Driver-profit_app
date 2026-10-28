@@ -6,6 +6,7 @@ import com.surair.driverprofit.core.Calc
 import com.surair.driverprofit.core.FuelLoad
 import com.surair.driverprofit.core.Settings
 import com.surair.driverprofit.core.Shift
+import com.surair.driverprofit.core.ShiftKind
 import com.surair.driverprofit.core.ShiftStatus
 import com.surair.driverprofit.core.TripIncome
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,7 +63,7 @@ class Repository(private val file: File) {
 
     // ---- Turnos ----
 
-    fun startShift(now: Long = System.currentTimeMillis()): Shift {
+    fun startShift(kind: ShiftKind = ShiftKind.WORK, now: Long = System.currentTimeMillis()): Shift {
         var created: Shift? = null
         update { d ->
             val existing = d.activeShift
@@ -79,11 +80,27 @@ class Repository(private val file: File) {
                 consumptionL100 = s.consumptionL100,
                 pricePerLiter = price,
                 status = ShiftStatus.RUNNING,
+                kind = kind,
             )
             created = shift
             d.copy(shifts = listOf(shift) + d.shifts)
         }
         return created!!
+    }
+
+    /** Km hechos con la app cerrada: un recorrido personal ya cerrado, para que descuente nafta. */
+    fun addManualKm(km: Double, at: Long = System.currentTimeMillis()) {
+        update { d ->
+            val s = d.settings
+            val price = if (s.lastPricePerLiter > 0) s.lastPricePerLiter else d.fuelLoads.maxByOrNull { it.at }?.pricePerLiter ?: 0.0
+            val shift = Shift(
+                id = newId(), startedAt = at, endedAt = at, distanceMeters = km * 1000.0,
+                consumptionL100 = s.consumptionL100, pricePerLiter = price,
+                status = ShiftStatus.CLOSED, kind = ShiftKind.PERSONAL, manual = true,
+                notes = "Km cargados a mano",
+            )
+            d.copy(shifts = listOf(shift) + d.shifts)
+        }
     }
 
     fun updateShift(id: String, block: (Shift) -> Shift) {

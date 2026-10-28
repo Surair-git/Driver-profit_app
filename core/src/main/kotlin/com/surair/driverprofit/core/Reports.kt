@@ -6,6 +6,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.TemporalAdjusters
 
+/** Resumen de un conjunto de recorridos. Las cifras principales son solo del trabajo; lo personal va aparte. */
 data class Summary(
     val shiftCount: Int,
     val km: Double,
@@ -15,7 +16,13 @@ data class Summary(
     val fuelCost: Double,
     val tripCount: Int,
     val activeMs: Long,
+    val personalCount: Int = 0,
+    val personalKm: Double = 0.0,
+    val personalLiters: Double = 0.0,
+    val personalFuelCost: Double = 0.0,
 ) {
+    val totalKm: Double get() = km + personalKm
+    val totalLiters: Double get() = fuelLiters + personalLiters
     val net: Double get() = gross - fuelCost
     val netPercent: Double? get() = Calc.netPercent(gross, net)
     val emptyKm: Double? get() = if (passengerKm > 0) (km - passengerKm).coerceAtLeast(0.0) else null
@@ -56,15 +63,21 @@ data class FuelLoadRow(
 object Reports {
     fun summarize(shifts: List<Shift>, now: Long = System.currentTimeMillis()): Summary {
         if (shifts.isEmpty()) return Summary.EMPTY
+        val work = shifts.filter { it.isWork }
+        val personal = shifts.filter { !it.isWork }
         return Summary(
-            shiftCount = shifts.size,
-            km = shifts.sumOf { it.km },
-            passengerKm = shifts.sumOf { it.passengerKm },
-            gross = shifts.sumOf { Calc.gross(it) },
-            fuelLiters = shifts.sumOf { Calc.fuelLiters(it) },
-            fuelCost = shifts.sumOf { Calc.fuelCost(it) },
-            tripCount = shifts.sumOf { if (it.tripCount > 0) it.tripCount else it.trips.size },
-            activeMs = shifts.sumOf { Calc.activeMs(it, now) },
+            shiftCount = work.size,
+            km = work.sumOf { it.km },
+            passengerKm = work.sumOf { it.passengerKm },
+            gross = work.sumOf { Calc.gross(it) },
+            fuelLiters = work.sumOf { Calc.fuelLiters(it) },
+            fuelCost = work.sumOf { Calc.fuelCost(it) },
+            tripCount = work.sumOf { if (it.tripCount > 0) it.tripCount else it.trips.size },
+            activeMs = work.sumOf { Calc.activeMs(it, now) },
+            personalCount = personal.size,
+            personalKm = personal.sumOf { it.km },
+            personalLiters = personal.sumOf { Calc.fuelLiters(it) },
+            personalFuelCost = personal.sumOf { Calc.fuelCost(it) },
         )
     }
 
@@ -135,7 +148,7 @@ object Reports {
 
     /** Neto por día a partir de `from`, durante `days` días (para gráficos de barras). */
     fun dailyNet(shifts: List<Shift>, from: LocalDate, days: Int, zone: ZoneId = ZoneId.systemDefault(), now: Long = System.currentTimeMillis()): List<Double> {
-        val byDay = shifts.groupBy { localDate(it.startedAt, zone) }
+        val byDay = shifts.filter { it.isWork }.groupBy { localDate(it.startedAt, zone) }
         return (0 until days).map { i ->
             val d = from.plusDays(i.toLong())
             byDay[d]?.let { summarize(it, now).net } ?: 0.0

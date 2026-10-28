@@ -57,10 +57,12 @@ import com.surair.driverprofit.core.Calc
 import com.surair.driverprofit.core.Fmt
 import com.surair.driverprofit.core.Reports
 import com.surair.driverprofit.core.Shift
+import com.surair.driverprofit.core.ShiftKind
 import com.surair.driverprofit.core.ShiftStatus
 import com.surair.driverprofit.core.Summary
 import com.surair.driverprofit.tracking.Live
 import com.surair.driverprofit.tracking.LiveTracking
+import com.surair.driverprofit.tracking.StartRequest
 import com.surair.driverprofit.tracking.TrackingService
 
 fun hasLocationPermission(context: Context): Boolean =
@@ -96,10 +98,12 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
         lastActiveId = active?.id
     }
 
+    var pendingKind by remember { mutableStateOf(ShiftKind.WORK) }
+
     // Captura de pantalla para leer el recuadro de DiDi: el sistema pide confirmación en cada turno.
     val projectionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val data = result.data
-        repo.startShift()
+        repo.startShift(ShiftKind.WORK)
         if (result.resultCode == Activity.RESULT_OK && data != null) {
             TrackingService.startWithProjection(context, result.resultCode, data)
         } else {
@@ -113,10 +117,10 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
     fun screenCaptureIntent(): Intent =
         (context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).createScreenCaptureIntent()
     fun launchShift() {
-        if (settings.didiCaptureEnabled) {
+        if (pendingKind == ShiftKind.WORK && settings.didiCaptureEnabled) {
             projectionLauncher.launch(screenCaptureIntent())
         } else {
-            repo.startShift()
+            repo.startShift(pendingKind)
             TrackingService.start(context)
         }
     }
@@ -126,8 +130,17 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
     fun startWithPermission() {
         if (hasLocationPermission(context)) launchShift() else permissionLauncher.launch(requiredPermissions())
     }
-    fun requestStart() {
+    fun requestStart(kind: ShiftKind) {
+        pendingKind = kind
         if (settings.lastPricePerLiter <= 0) showPriceDialog = true else startWithPermission()
+    }
+
+    // Inicio pedido desde una notificación ("Turno DiDi" o "Viaje personal").
+    val requested by StartRequest.pending.collectAsState()
+    LaunchedEffect(requested, active?.id) {
+        val k = requested ?: return@LaunchedEffect
+        StartRequest.pending.value = null
+        if (active == null) requestStart(k)
     }
 
     Column(
@@ -170,7 +183,7 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
                 onAttachCapture = { attachLauncher.launch(screenCaptureIntent()) },
             )
         } else {
-            IdleHeader(data = data, now = now, onStart = { requestStart() })
+            IdleHeader(data = data, now = now, onStart = { requestStart(ShiftKind.WORK) }, onStartPersonal = { requestStart(ShiftKind.PERSONAL) })
         }
 
         val today = Reports.today(data.shifts, now = now)
@@ -226,8 +239,8 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
     if (showStopConfirm && active != null) {
         AlertDialog(
             onDismissRequest = { showStopConfirm = false },
-            title = { Text("¿Terminar el turno?") },
-            text = { Text("Se deja de medir el recorrido. Después cargás lo que te mostró DiDi para ver la ganancia neta.") },
+            title = { Text(if (active.isWork) "¿Terminar el turno?" else "¿Terminar el viaje?") },
+            text = { Text(if (active.isWork) "Se deja de medir el recorrido. Después cargás lo que te mostró DiDi para ver la ganancia neta." else "Se deja de medir. Los km y la nafta quedan descontados del tanque.") },
             confirmButton = {
                 Button(onClick = {
                     showStopConfirm = false
@@ -289,18 +302,27 @@ private fun ActiveDashboard(
     val activeMs = Calc.activeMs(shift, now)
     val perHour = if (activeMs > 10 * 60_000L && gross > 0) net / (activeMs / 3_600_000.0) else null
     val cs = MaterialTheme.colorScheme
+    val work = shift.isWork
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             CarLine(data, gpsStatus(live, shift, now))
             StatusPill(
-                text = if (paused) "En pausa" else "En marcha",
+                text = when {
+                    paused -> "En pausa"
+                    work -> "En marcha"
+                    else -> "Personal"
+                },
                 detail = Fmt.clock(activeMs),
                 color = if (paused) cs.tertiary else cs.primary,
             )
         }
 
-        Column(modifier = Modifier.padding(top = 6.dp)) {
+        if (!work) Column(modifier = Modifier.padding(top = 6.dp)) {
+            Text("Viaje personal", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+            Text(Fmt.km(km), style = MaterialTheme.typography.displayLarge, maxLines = 1)
+            Text("${Fmt.money(cost)} en nafta · no entra en la ganancia de DiDi", style = MaterialTheme.typography.bodyMedium, color = cs.secondary)
+        } else Column(modifier = Modifier.padding(top = 6.dp)) {
             Text("Neto hasta ahora", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
             Text(Fmt.money(net), style = MaterialTheme.typography.displayLarge, color = netColor(net), maxLines = 1)
             Text(
@@ -313,7 +335,7 @@ private fun ActiveDashboard(
             )
         }
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (work) Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Tile("km", Fmt.dec(km, 1), modifier = Modifier.weight(1f))
             Tile("nafta", Fmt.money(cost), modifier = Modifier.weight(1f), valueColor = fuelColor())
             Tile(
@@ -327,11 +349,11 @@ private fun ActiveDashboard(
             )
         }
 
-        DidiCaptureRow(shift = shift, capturing = live?.capturing == true, now = now, onAttach = onAttachCapture)
+        if (work) DidiCaptureRow(shift = shift, capturing = live?.capturing == true, now = now, onAttach = onAttachCapture)
 
         TankCard(data = data, now = now, compact = true)
 
-        Button(
+        if (work) Button(
             onClick = onAddTrip,
             modifier = Modifier.fillMaxWidth().height(64.dp),
             shape = RoundedCornerShape(18.dp),
@@ -366,7 +388,7 @@ private fun ActiveDashboard(
             }
         }
 
-        if (shift.trips.isNotEmpty()) {
+        if (work && shift.trips.isNotEmpty()) {
             InfoCard {
                 SectionTitle("Viajes de este turno")
                 shift.trips.sortedByDescending { it.at }.take(8).forEachIndexed { i, t ->
@@ -420,10 +442,10 @@ private fun DidiCaptureRow(shift: Shift, capturing: Boolean, now: Long, onAttach
 }
 
 @Composable
-private fun IdleHeader(data: AppData, now: Long, onStart: () -> Unit) {
+private fun IdleHeader(data: AppData, now: Long, onStart: () -> Unit, onStartPersonal: () -> Unit) {
     val s = data.settings
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        CarLine(data, "Sin turno en curso")
+        CarLine(data, "Sin recorrido en curso")
         Button(
             onClick = onStart,
             modifier = Modifier.fillMaxWidth().height(72.dp),
@@ -431,7 +453,16 @@ private fun IdleHeader(data: AppData, now: Long, onStart: () -> Unit) {
         ) {
             Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(30.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Iniciar turno", style = MaterialTheme.typography.headlineSmall)
+            Text("Iniciar turno DiDi", style = MaterialTheme.typography.headlineSmall)
+        }
+        FilledTonalButton(
+            onClick = onStartPersonal,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Text("Viaje personal", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.width(8.dp))
+            Text("descuenta nafta, no cuenta como ganancia", style = MaterialTheme.typography.bodySmall)
         }
         if (s.lastPricePerLiter <= 0) {
             InfoCard(tone = CardTone.Warning) {
@@ -497,7 +528,7 @@ fun SummaryCard(title: String, s: Summary) {
     InfoCard {
         SectionTitle(title)
         if (s.shiftCount == 0) {
-            Text("Sin turnos todavía.", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+            Text("Sin turnos de DiDi todavía.", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
         } else {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(Fmt.money(s.net), style = MaterialTheme.typography.displaySmall, color = netColor(s.net))
@@ -525,6 +556,14 @@ fun SummaryCard(title: String, s: Summary) {
                 style = MaterialTheme.typography.bodySmall,
                 color = cs.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+        if (s.personalKm > 0) {
+            Text(
+                "Uso personal: ${Fmt.km(s.personalKm, 0)} · ${Fmt.money(s.personalFuelCost)} de nafta, fuera de la ganancia",
+                style = MaterialTheme.typography.bodySmall,
+                color = cs.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
     }

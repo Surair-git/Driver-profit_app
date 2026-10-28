@@ -16,6 +16,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.surair.driverprofit.tracking.AutoStart
+import com.surair.driverprofit.tracking.VehicleDetection
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -67,8 +68,37 @@ private fun AutoStartSection(data: AppData) {
         repo.updateSettings { it.copy(triggerOnBluetooth = granted) }
     }
     var btName by remember(s.bluetoothDeviceName) { mutableStateOf(s.bluetoothDeviceName) }
+    val activityLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        repo.updateSettings { it.copy(vehicleDetection = granted) }
+        VehicleDetection.sync(context)
+    }
 
     SectionTitle("Inicio automático")
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Detectar que voy en el auto", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Usa el acelerómetro (sin GPS, casi sin batería) y funciona con la app cerrada. Tarda de 30 s a un par de minutos en darse cuenta y te pregunta: Turno DiDi o Viaje personal. Al bajar del auto tras un rato quieto, sugiere terminar. Pide el permiso \"Actividad física\".",
+                style = MaterialTheme.typography.bodySmall,
+                color = cs.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = s.vehicleDetection,
+            onCheckedChange = { on ->
+                if (!on) {
+                    repo.updateSettings { it.copy(vehicleDetection = false) }
+                    VehicleDetection.sync(context)
+                } else if (!VehicleDetection.hasPermission(context)) {
+                    activityLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                } else {
+                    repo.updateSettings { it.copy(vehicleDetection = true) }
+                    VehicleDetection.sync(context)
+                }
+            },
+        )
+    }
+
     Text("Cuando abrís DiDi", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         val options = listOf("off" to "Nada", "ask" to "Preguntar", "auto" to "Iniciar solo")
@@ -146,7 +176,7 @@ private fun AutoStartSection(data: AppData) {
         )
     }
     Text(
-        "No se avisa si ya hay un turno en marcha, ni dentro de los 15 minutos de un aviso o de un turno terminado.",
+        "Las notificaciones traen dos botones: Turno DiDi (abre la app y pide el permiso de captura) y Viaje personal (arranca directo). No se avisa si ya hay un recorrido en marcha, ni dentro de los 15 minutos de un aviso o de un recorrido terminado.",
         style = MaterialTheme.typography.bodySmall,
         color = cs.onSurfaceVariant,
     )

@@ -16,8 +16,15 @@ data class LiveTracking(
     val stopPromptSince: Long? = null,
     /** Si la lectura del recuadro de DiDi está activa en este turno. */
     val capturing: Boolean = false,
+    /** Último momento con movimiento real. */
+    val lastMovementAt: Long? = null,
 )
 
 object Live {
     val tracking = MutableStateFlow<LiveTracking?>(null)
+}
+
+/** Pedido de iniciar un recorrido que llega desde una notificación y lo atiende la pantalla principal. */
+object StartRequest {
+    val pending = MutableStateFlow<com.surair.driverprofit.core.ShiftKind?>(null)
 }

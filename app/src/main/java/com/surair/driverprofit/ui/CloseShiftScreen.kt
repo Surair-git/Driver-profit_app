@@ -22,6 +22,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -39,6 +42,7 @@ import com.surair.driverprofit.core.Calc
 import com.surair.driverprofit.core.Fmt
 import com.surair.driverprofit.core.Settings
 import com.surair.driverprofit.core.Shift
+import com.surair.driverprofit.core.ShiftKind
 import com.surair.driverprofit.core.ShiftStatus
 import com.surair.driverprofit.tracking.OcrInbox
 
@@ -66,7 +70,9 @@ fun CloseShiftScreen(shift: Shift, settings: Settings, onDone: () -> Unit) {
     var passengerKm by remember(shift.id) { mutableStateOf(shift.passengerKm.toInput(1)) }
     var price by remember(shift.id) { mutableStateOf(shift.pricePerLiter.toInput()) }
     var notes by remember(shift.id) { mutableStateOf(shift.notes) }
+    var kind by remember(shift.id) { mutableStateOf(shift.kind) }
     var confirmDelete by remember { mutableStateOf(false) }
+    val work = kind == ShiftKind.WORK
 
     val gross = parseOrZero(fare) + parseOrZero(bonus) + parseOrZero(tip) + parseOrZero(other)
     val priceValue = parseOrZero(price)
@@ -91,6 +97,7 @@ fun CloseShiftScreen(shift: Shift, settings: Settings, onDone: () -> Unit) {
                 passengerKm = derivedPassengerKm,
                 pricePerLiter = if (priceValue > 0) priceValue else it.pricePerLiter,
                 notes = notes.trim(),
+                kind = kind,
                 status = if (it.isActive) it.status else ShiftStatus.CLOSED,
             )
         }
@@ -103,7 +110,7 @@ fun CloseShiftScreen(shift: Shift, settings: Settings, onDone: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (shift.status == ShiftStatus.CLOSED) "Editar turno" else "Cerrar turno") },
+                title = { Text(if (shift.status == ShiftStatus.CLOSED) "Editar recorrido" else "Cerrar turno") },
                 navigationIcon = { IconButton(onClick = onDone) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") } },
                 actions = { IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, contentDescription = "Eliminar turno") } },
             )
@@ -124,6 +131,26 @@ fun CloseShiftScreen(shift: Shift, settings: Settings, onDone: () -> Unit) {
                     Metric("nafta", Fmt.liters(Calc.fuelLiters(shift)), modifier = Modifier.weight(1f))
                 }
             }
+
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SegmentedButton(selected = work, onClick = { kind = ShiftKind.WORK }, shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)) { Text("Turno DiDi") }
+                SegmentedButton(selected = !work, onClick = { kind = ShiftKind.PERSONAL }, shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)) { Text("Viaje personal") }
+            }
+
+            if (!work) {
+                InfoCard {
+                    Text("Viaje personal", fontWeight = FontWeight.SemiBold)
+                    Text("Descuenta ${Fmt.money(cost)} de nafta del tanque y suma al consumo observado. No entra en la ganancia de DiDi.", style = MaterialTheme.typography.bodySmall)
+                }
+                NumberField("Precio del litro", price, { price = it }, prefix = "$")
+                OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notas") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                Button(onClick = { save() }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                    Text("Guardar", style = MaterialTheme.typography.titleMedium)
+                }
+                TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Volver sin guardar") }
+            }
+
+            if (work) {
 
             if (prefill != null) {
                 InfoCard(tone = CardTone.Primary) {
@@ -201,6 +228,7 @@ fun CloseShiftScreen(shift: Shift, settings: Settings, onDone: () -> Unit) {
                 Text(if (shift.status == ShiftStatus.CLOSED) "Guardar cambios" else "Guardar y cerrar turno", style = MaterialTheme.typography.titleMedium)
             }
             TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Volver sin guardar") }
+            }
             Spacer(Modifier.height(24.dp))
         }
     }

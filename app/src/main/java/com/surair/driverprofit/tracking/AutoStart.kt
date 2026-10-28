@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import com.surair.driverprofit.App
 import com.surair.driverprofit.MainActivity
 import com.surair.driverprofit.R
+import com.surair.driverprofit.core.ShiftKind
 import com.surair.driverprofit.ui.hasLocationPermission
 
 /**
@@ -23,8 +24,12 @@ object AutoStart {
     private const val TAG = "AutoStart"
     const val CHANNEL_ID = "autostart"
     const val NOTIFICATION_ID = 2
+    const val EXIT_NOTIFICATION_ID = 4
     private const val PREFS = "autostart"
     private const val KEY_LAST_AT = "lastAt"
+    private const val KEY_LAST_EXIT_AT = "lastExitAt"
+    /** Para sugerir terminar hace falta que el recorrido lleve este tiempo sin moverse. */
+    private const val EXIT_STILL_MS = 8 * 60_000L
     /** No volver a sugerir dentro de este lapso, ni enseguida después de terminar un turno. */
     private const val COOLDOWN_MS = 15 * 60_000L
 
@@ -42,6 +47,43 @@ object AutoStart {
         val mode = App.repo.data.value.settings.autoStartMode
         if (mode == "off") return
         suggest(context, autoStart = mode == "auto", reason = "Abriste DiDi")
+    }
+
+    /** El teléfono va en un vehículo (acelerómetro). */
+    fun onVehicleEnter(context: Context) {
+        if (!App.repo.data.value.settings.vehicleDetection) return
+        suggest(context, autoStart = false, reason = "Parece que arrancaste")
+    }
+
+    /** Bajó del vehículo. Solo sugiere terminar si el recorrido lleva un rato sin moverse. */
+    fun onVehicleExit(context: Context) {
+        if (!App.repo.data.value.settings.vehicleDetection) return
+        val active = App.repo.data.value.activeShift ?: return
+        val live = Live.tracking.value
+        val now = System.currentTimeMillis()
+        val still = live?.lastMovementAt?.let { now - it > EXIT_STILL_MS } ?: false
+        if (live != null && live.shiftId == active.id && !still) return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (now - prefs.getLong(KEY_LAST_EXIT_AT, 0L) < COOLDOWN_MS) return
+        prefs.edit().putLong(KEY_LAST_EXIT_AT, now).apply()
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        ensureChannel(nm)
+        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        val stop = PendingIntent.getForegroundService(
+            context, 14, Intent(context, TrackingService::class.java).setAction(TrackingService.ACTION_STOP), flags,
+        )
+        val n = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(if (active.isWork) "¿Terminaste el turno?" else "¿Terminaste el viaje?")
+            .setContentText("Parece que bajaste del auto. Si seguís, ignorá este aviso.")
+            .setContentIntent(PendingIntent.getActivity(context, 10, Intent(context, MainActivity::class.java), flags))
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setTimeoutAfter(10 * 60_000L)
+            .addAction(0, "Terminar", stop)
+            .build()
+        nm.notify(EXIT_NOTIFICATION_ID, n)
     }
 
     fun onCharger(context: Context) {
@@ -67,18 +109,18 @@ object AutoStart {
         if (now - lastEnd < COOLDOWN_MS) return
         prefs.edit().putLong(KEY_LAST_AT, now).apply()
 
-        if (autoStart && hasLocationPermission(context) && startShift(context)) {
-            notify(context, title = "Turno iniciado", text = "$reason. Ya se está midiendo el recorrido.", withAction = false)
+        if (autoStart && hasLocationPermission(context) && startShift(context, ShiftKind.WORK)) {
+            notify(context, title = "Turno iniciado", text = "$reason. Ya se está midiendo el recorrido.", withActions = false)
         } else {
-            notify(context, title = "¿Iniciás turno?", text = reason, withAction = true)
+            notify(context, title = "¿Arrancás un recorrido?", text = reason, withActions = true)
         }
     }
 
-    /** Crea el turno y levanta el servicio de GPS. Devuelve false si Android no dejó arrancarlo desde el fondo. */
-    fun startShift(context: Context): Boolean {
+    /** Crea el recorrido y levanta el servicio de GPS. Devuelve false si Android no dejó arrancarlo desde el fondo. */
+    fun startShift(context: Context, kind: ShiftKind): Boolean {
         val repo = App.repo
         if (repo.data.value.activeShift != null) return true
-        val shift = repo.startShift()
+        val shift = repo.startShift(kind)
         return try {
             TrackingService.start(context)
             true
@@ -93,13 +135,17 @@ object AutoStart {
         (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIFICATION_ID)
     }
 
-    private fun notify(context: Context, title: String, text: String, withAction: Boolean) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private fun ensureChannel(nm: NotificationManager) {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Inicio automático", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Aviso para iniciar el turno al abrir DiDi o conectar el auto"
+                description = "Aviso para iniciar o terminar un recorrido al abrir DiDi, conectar el auto o detectar que vas en vehículo"
             },
         )
+    }
+
+    private fun notify(context: Context, title: String, text: String, withActions: Boolean) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        ensureChannel(nm)
         val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         val open = PendingIntent.getActivity(context, 10, Intent(context, MainActivity::class.java), flags)
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -111,9 +157,21 @@ object AutoStart {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setTimeoutAfter(10 * 60_000L)
-        if (withAction) {
-            val start = PendingIntent.getBroadcast(context, 11, Intent(context, StartShiftReceiver::class.java), flags)
-            builder.addAction(0, "Iniciar turno", start)
+        if (withActions) {
+            // "Turno DiDi" abre la app, que pide el permiso de captura de pantalla y arranca.
+            val work = PendingIntent.getActivity(
+                context, 12,
+                Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_START_SHIFT, ShiftKind.WORK.name),
+                flags,
+            )
+            // "Viaje personal" arranca directo, sin abrir nada.
+            val personal = PendingIntent.getBroadcast(
+                context, 13,
+                Intent(context, StartShiftReceiver::class.java).putExtra(StartShiftReceiver.EXTRA_KIND, ShiftKind.PERSONAL.name),
+                flags,
+            )
+            builder.addAction(0, "Turno DiDi", work)
+            builder.addAction(0, "Viaje personal", personal)
         }
         nm.notify(NOTIFICATION_ID, builder.build())
     }

@@ -118,7 +118,7 @@ class TrackingService : Service() {
 
         val projectionCode = intent?.getIntExtra(EXTRA_PROJECTION_CODE, 0) ?: 0
         val projectionData = intent?.let { IntentCompat.getParcelableExtra(it, EXTRA_PROJECTION_DATA, Intent::class.java) }
-        val wantsProjection = projectionData != null && projectionCode != 0
+        val wantsProjection = active.isWork && projectionData != null && projectionCode != 0
 
         if (!goForeground(withProjection = wantsProjection || screenReader?.isRunning == true)) return START_NOT_STICKY
 
@@ -248,6 +248,7 @@ class TrackingService : Service() {
             lastFixAt = lastFixAt,
             stopPromptSince = stopPromptSince,
             capturing = screenReader?.isRunning == true,
+            lastMovementAt = lastMovementAt,
         )
     }
 
@@ -336,7 +337,8 @@ class TrackingService : Service() {
                 var s = it.copy(distanceMeters = distanceMeters, movingMs = movingMs)
                 val p = s.pausedAt
                 if (p != null) s = s.copy(totalPausedMs = s.totalPausedMs + (now - p), pausedAt = null)
-                s.copy(status = ShiftStatus.PENDING_CLOSE, endedAt = now)
+                // Un viaje personal no tiene datos de DiDi que cargar: queda cerrado directamente.
+                s.copy(status = if (s.isWork) ShiftStatus.PENDING_CLOSE else ShiftStatus.CLOSED, endedAt = now)
             }
         }
         shiftId = null
@@ -441,10 +443,11 @@ class TrackingService : Service() {
         val cost = if (shift != null) Calc.fuelCost(km, shift.consumptionL100, shift.pricePerLiter) else 0.0
         val gross = if (shift != null) Calc.liveGross(shift) else 0.0
 
-        val title = (if (paused) "Turno en pausa" else "Turno en marcha") + " · " + Fmt.km(km)
+        val work = shift?.isWork ?: true
+        val title = (if (work) (if (paused) "Turno en pausa" else "Turno en marcha") else (if (paused) "Viaje personal en pausa" else "Viaje personal")) + " · " + Fmt.km(km)
         val text = buildString {
             append("Nafta ").append(Fmt.money(cost))
-            if (gross > 0) append(" · Bruto ").append(Fmt.money(gross)).append(" · Neto ").append(Fmt.money(gross - cost))
+            if (work && gross > 0) append(" · Bruto ").append(Fmt.money(gross)).append(" · Neto ").append(Fmt.money(gross - cost))
             if (paused && pausedBy != PausedBy.MANUAL) append(" · se reanuda solo al moverse")
         }
 
