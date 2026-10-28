@@ -1,7 +1,10 @@
 package com.surair.driverprofit.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -93,9 +96,29 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
         lastActiveId = active?.id
     }
 
-    fun launchShift() {
+    // Captura de pantalla para leer el recuadro de DiDi: el sistema pide confirmación en cada turno.
+    val projectionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val data = result.data
         repo.startShift()
-        TrackingService.start(context)
+        if (result.resultCode == Activity.RESULT_OK && data != null) {
+            TrackingService.startWithProjection(context, result.resultCode, data)
+        } else {
+            TrackingService.start(context)
+        }
+    }
+    val attachLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val data = result.data
+        if (result.resultCode == Activity.RESULT_OK && data != null) TrackingService.attachProjection(context, result.resultCode, data)
+    }
+    fun screenCaptureIntent(): Intent =
+        (context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).createScreenCaptureIntent()
+    fun launchShift() {
+        if (settings.didiCaptureEnabled) {
+            projectionLauncher.launch(screenCaptureIntent())
+        } else {
+            repo.startShift()
+            TrackingService.start(context)
+        }
     }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         if (result[Manifest.permission.ACCESS_FINE_LOCATION] == true) launchShift() else permissionDenied = true
@@ -144,6 +167,7 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
                 onStop = { showStopConfirm = true },
                 onAddTrip = { showTripDialog = true },
                 onRemoveTrip = { repo.removeTrip(active.id, it) },
+                onAttachCapture = { attachLauncher.launch(screenCaptureIntent()) },
             )
         } else {
             IdleHeader(data = data, now = now, onStart = { requestStart() })
@@ -179,6 +203,23 @@ fun HomeScreen(data: AppData, onOpenShift: (String) -> Unit, modifier: Modifier 
                 showPriceDialog = false
                 startWithPermission()
             },
+        )
+    }
+
+    val promptSince = live?.stopPromptSince
+    if (promptSince != null && active != null && live?.shiftId == active.id) {
+        AlertDialog(
+            onDismissRequest = { TrackingService.keepGoing(context) },
+            title = { Text("¿Se paró el auto?") },
+            text = {
+                Text(
+                    "Hace ${((now - promptSince) / 1000 + settings.stopPromptSeconds).coerceAtLeast(0)} s que no hay movimiento. " +
+                        "Si pausás, el tiempo y los km dejan de contar" +
+                        (if (settings.smartResume) " y el turno se reanuda solo cuando el auto arranque." else "."),
+                )
+            },
+            confirmButton = { Button(onClick = { TrackingService.pauseFromStop(context) }) { Text("Pausar") } },
+            dismissButton = { TextButton(onClick = { TrackingService.keepGoing(context) }) { Text("Sigo en viaje") } },
         )
     }
 
@@ -235,11 +276,13 @@ private fun ActiveDashboard(
     onStop: () -> Unit,
     onAddTrip: () -> Unit,
     onRemoveTrip: (String) -> Unit,
+    onAttachCapture: () -> Unit,
 ) {
     val meters = maxOf(live?.distanceMeters ?: 0.0, shift.distanceMeters)
     val km = meters / 1000.0
     val cost = Calc.fuelCost(km, shift.consumptionL100, shift.pricePerLiter)
-    val gross = Calc.tripsTotal(shift)
+    val gross = Calc.liveGross(shift)
+    val fromDidi = shift.didiGross > 0
     val net = gross - cost
     val pct = Calc.netPercent(gross, net)
     val paused = shift.status == ShiftStatus.PAUSED
@@ -273,8 +316,18 @@ private fun ActiveDashboard(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Tile("km", Fmt.dec(km, 1), modifier = Modifier.weight(1f))
             Tile("nafta", Fmt.money(cost), modifier = Modifier.weight(1f), valueColor = fuelColor())
-            Tile(if (shift.trips.isEmpty()) "bruto" else "bruto · ${shift.trips.size} viajes", Fmt.money(gross), modifier = Modifier.weight(1f))
+            Tile(
+                when {
+                    fromDidi -> "bruto · DiDi"
+                    shift.trips.isEmpty() -> "bruto"
+                    else -> "bruto · ${shift.trips.size} viajes"
+                },
+                Fmt.money(gross),
+                modifier = Modifier.weight(1f),
+            )
         }
+
+        DidiCaptureRow(shift = shift, capturing = live?.capturing == true, now = now, onAttach = onAttachCapture)
 
         TankCard(data = data, now = now, compact = true)
 
@@ -330,6 +383,38 @@ private fun ActiveDashboard(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Estado de la lectura del recuadro de ganancias de DiDi. */
+@Composable
+private fun DidiCaptureRow(shift: Shift, capturing: Boolean, now: Long, onAttach: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val lastRead = shift.didiLastReadAt
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                when {
+                    !capturing -> "Lectura de DiDi apagada en este turno"
+                    lastRead == null -> "Leyendo el recuadro de DiDi…"
+                    else -> "Recuadro de DiDi: ${Fmt.money(shift.didiDayLast ?: 0.0)} · leído ${Fmt.time(lastRead)}"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = cs.onSurfaceVariant,
+            )
+            if (capturing && lastRead == null) {
+                Text("Dejá DiDi en pantalla un momento para la primera lectura.", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            } else if (capturing && lastRead != null && now - lastRead > 30 * 60_000L) {
+                Text("Hace más de 30 min que no se puede leer. ¿DiDi está en pantalla?", style = MaterialTheme.typography.bodySmall, color = cs.tertiary)
+            }
+        }
+        if (!capturing) {
+            TextButton(onClick = onAttach) { Text("Activar") }
         }
     }
 }

@@ -34,10 +34,13 @@ object Calc {
 
     fun tripsTotal(shift: Shift): Double = shift.trips.sumOf { it.amount }
 
-    /** Bruto: lo cargado al cerrar; si todavía no se cerró, la suma de viajes en vivo. */
+    /** Bruto en vivo: la lectura del recuadro de DiDi si la hay, si no los viajes anotados a mano. */
+    fun liveGross(shift: Shift): Double = if (shift.didiGross > 0) shift.didiGross else tripsTotal(shift)
+
+    /** Bruto: lo cargado al cerrar; si todavía no se cerró, el bruto en vivo. */
     fun gross(shift: Shift): Double {
         val fields = shift.fareTotal + shift.bonusTotal + shift.tipTotal + shift.otherTotal
-        return if (fields > 0) fields else tripsTotal(shift)
+        return if (fields > 0) fields else liveGross(shift)
     }
 
     fun fuelLiters(shift: Shift): Double = litersForKm(shift.km, shift.consumptionL100)

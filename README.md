@@ -12,6 +12,15 @@ precio se cambian en Ajustes.
 - **Turno con inicio / pausa / fin.** Corre como servicio en segundo plano con una notificación fija
   que muestra km, nafta gastada y neto, con botones Pausar y Terminar. Sigue midiendo mientras DiDi
   está en pantalla o con la pantalla apagada.
+- **Detección de paradas.** El GPS solo suma km cuando hay velocidad de marcha, así parado no
+  "inventa" metros. Pasado un tiempo de gracia sin movimiento (30 s por defecto, editable) pregunta
+  si el auto se paró para pausar el conteo; si pausás, se reanuda solo cuando volvés a arrancar.
+- **Lectura del recuadro de DiDi.** Con permiso de captura de pantalla (lo pide Android al iniciar
+  cada turno), lee cada 5, 10 o 15 minutos el recuadro de "ganancias del día" de DiDi y lo usa como
+  bruto del turno, contemplando que se reinicia a las 00:00. Se lee solo la franja de arriba, en
+  el celular, sin internet. Los viajes anotados a mano siguen disponibles.
+- **Captura del desglose.** Compartí la captura de "Tus ganancias" de DiDi con Driver Profit y la
+  app precarga tarifa, premio, propina, viajes y ganancias por km en el cierre del turno.
 - **Costo en vivo.** km recorridos × consumo × precio del litro. Si anotás cada viaje con "+ Viaje",
   también ves bruto, neto y porcentaje en vivo.
 - **Cierre del turno con los datos de DiDi.** Tarifa del viaje, premio, propina, otros, cantidad de

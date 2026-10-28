@@ -166,6 +166,7 @@ fun SettingsScreen(data: AppData, modifier: Modifier = Modifier) {
     var fuelType by remember(s) { mutableStateOf(s.fuelType) }
     var fixed by remember(s) { mutableStateOf(s.monthlyFixedCosts.toInput()) }
     var autoPause by remember(s) { mutableStateOf(if (s.autoPauseMinutes > 0) s.autoPauseMinutes.toString() else "") }
+    var stopPrompt by remember(s) { mutableStateOf(if (s.stopPromptSeconds > 0) s.stopPromptSeconds.toString() else "") }
     var saved by remember { mutableStateOf(false) }
 
     val consumptionValue = Fmt.parseNumber(consumption) ?: s.consumptionL100
@@ -214,9 +215,41 @@ fun SettingsScreen(data: AppData, modifier: Modifier = Modifier) {
         NumberField("Gastos fijos por mes", fixed, { fixed = it }, prefix = "$",
             supporting = "Seguro, patente, service. Se prorratea por día en el historial. Dejalo vacío si solo querés ver nafta.")
 
-        SectionTitle("Turno")
-        NumberField("Pausar solo si no hay movimiento", autoPause, { autoPause = it }, suffix = "min",
-            supporting = "Vacío o 0 = apagado. Útil si te olvidás de pausar cuando apagás el motor.")
+        SectionTitle("Paradas")
+        NumberField("Preguntar si el auto se paró después de", stopPrompt, { stopPrompt = it }, suffix = "seg",
+            supporting = "Tiempo de gracia para semáforos. Pasado ese tiempo sin movimiento, pregunta si pausar. Vacío o 0 = no preguntar.")
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Reanudar solo al moverse", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text("Después de pausar por una parada, el GPS sigue escuchando despacio y el turno se reanuda cuando el auto arranca.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = s.smartResume, onCheckedChange = { on -> repo.updateSettings { it.copy(smartResume = on) } })
+        }
+        NumberField("Pausar sin preguntar después de", autoPause, { autoPause = it }, suffix = "min",
+            supporting = "Vacío o 0 = apagado. Por si no respondés la pregunta y querés que pause igual.")
+
+        SectionTitle("Lectura del recuadro de DiDi")
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Leer las ganancias del día de DiDi", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text("Al iniciar el turno Android pide permiso para capturar la pantalla. Se lee solo la franja de arriba, en el celular, sin internet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = s.didiCaptureEnabled, onCheckedChange = { on -> repo.updateSettings { it.copy(didiCaptureEnabled = on) } })
+        }
+        if (s.didiCaptureEnabled) {
+            Text("Leer cada", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                val options = listOf(5, 10, 15)
+                options.forEachIndexed { i, minutes ->
+                    SegmentedButton(
+                        selected = s.didiCaptureMinutes == minutes,
+                        onClick = { repo.updateSettings { it.copy(didiCaptureMinutes = minutes) } },
+                        shape = SegmentedButtonDefaults.itemShape(index = i, count = options.size),
+                    ) { Text("$minutes min") }
+                }
+            }
+            Text("Los viajes anotados a mano siguen disponibles; si hay lectura de DiDi, manda esa.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
 
         Button(
             onClick = {
@@ -230,6 +263,7 @@ fun SettingsScreen(data: AppData, modifier: Modifier = Modifier) {
                         fuelType = fuelType.trim().ifEmpty { "Súper" },
                         monthlyFixedCosts = parseOrZero(fixed),
                         autoPauseMinutes = autoPause.trim().toIntOrNull() ?: 0,
+                        stopPromptSeconds = stopPrompt.trim().toIntOrNull() ?: 0,
                     )
                 }
                 saved = true

@@ -12,6 +12,10 @@ data class LiveTracking(
     val accuracyMeters: Float?,
     val speedKmh: Float?,
     val lastFixAt: Long?,
+    /** Desde cuándo está abierta la pregunta "¿se paró el auto?"; null si no está abierta. */
+    val stopPromptSince: Long? = null,
+    /** Si la lectura del recuadro de DiDi está activa en este turno. */
+    val capturing: Boolean = false,
 )
 
 object Live {

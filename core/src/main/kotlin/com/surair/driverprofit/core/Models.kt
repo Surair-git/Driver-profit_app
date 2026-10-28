@@ -14,8 +14,16 @@ data class Settings(
     val fuelType: String = "Súper",
     /** Gastos fijos mensuales (seguro, patente, service). Se prorratean por día. */
     val monthlyFixedCosts: Double = 0.0,
-    /** Minutos sin movimiento para pausar solo. 0 = apagado. */
+    /** Minutos sin movimiento para pausar solo, sin preguntar. 0 = apagado. */
     val autoPauseMinutes: Int = 0,
+    /** Segundos sin movimiento antes de preguntar "¿se paró el auto?". 0 = no preguntar. */
+    val stopPromptSeconds: Int = 30,
+    /** Si se pausó por una parada, reanudar solo cuando el auto vuelve a moverse. */
+    val smartResume: Boolean = true,
+    /** Leer el recuadro de ganancias del día de DiDi capturando la pantalla. */
+    val didiCaptureEnabled: Boolean = true,
+    /** Cada cuántos minutos leer el recuadro. */
+    val didiCaptureMinutes: Int = 5,
     /** Punto de partida para el saldo estimado del tanque. */
     val tankBaselineLiters: Double = 0.0,
     val tankBaselineAt: Long = 0L,
@@ -76,9 +84,23 @@ data class Shift(
     val didiPerKm: Double = 0.0,
     val notes: String = "",
     val status: ShiftStatus,
+    // Lectura del recuadro "ganancias del día" de DiDi durante el turno.
+    /** Lo que marcaba el recuadro en la primera lectura del turno (o 0 después de medianoche). */
+    val didiDayStart: Double? = null,
+    /** Última lectura del recuadro. */
+    val didiDayLast: Double? = null,
+    /** Lo ganado antes de que el recuadro se reiniciara a las 00:00. */
+    val didiBeforeReset: Double = 0.0,
+    val didiLastReadAt: Long? = null,
 ) {
     val isActive: Boolean get() = status == ShiftStatus.RUNNING || status == ShiftStatus.PAUSED
     val km: Double get() = distanceMeters / 1000.0
+    /** Bruto del turno según el recuadro de DiDi; 0 si todavía no hubo lectura. */
+    val didiGross: Double get() {
+        val start = didiDayStart ?: return 0.0
+        val last = didiDayLast ?: return 0.0
+        return (didiBeforeReset + (last - start)).coerceAtLeast(0.0)
+    }
 }
 
 @Serializable
